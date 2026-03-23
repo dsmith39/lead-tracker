@@ -142,6 +142,30 @@ test('searching the map jumps directly to the requested location', async ({ page
   expect(mapCenter.lng).toBeLessThan(-104.8);
 });
 
+test('clicking a lead address in the list zooms the map to that lead', async ({ page }) => {
+  await createLead({
+    name: 'Address Zoom Lead',
+    status: 'not-visited',
+    location: { lat: 34.0522, lng: -118.2437 },
+    address: { street: '300 Main St', city: 'Los Angeles', state: 'CA', postalCode: '90012', country: 'USA' },
+  });
+
+  await page.goto('/');
+  await page.locator('.address-link').first().click();
+
+  await expect(page.locator('#map-search-feedback')).toContainText('Centered on lead: Address Zoom Lead');
+
+  const mapCenter = await page.evaluate(() => {
+    const center = window.__leadTrackerMap.getCenter();
+    return { lat: center.lat, lng: center.lng };
+  });
+
+  expect(mapCenter.lat).toBeGreaterThan(34.0);
+  expect(mapCenter.lat).toBeLessThan(34.1);
+  expect(mapCenter.lng).toBeGreaterThan(-118.3);
+  expect(mapCenter.lng).toBeLessThan(-118.2);
+});
+
 test('clicking my location centers the map on the user position', async ({ page, context }) => {
   await context.grantPermissions(['geolocation']);
   await context.setGeolocation({ latitude: 33.7488, longitude: -84.3877 });
@@ -182,6 +206,10 @@ test('can edit an existing lead', async ({ page }) => {
   await page.click('.btn-edit');
   await expect(page.locator('#modal-title')).toHaveText('Edit Lead');
   await expect(page.locator('#input-name')).toHaveValue('Bob Smith');
+  await expect(page.locator('#input-name')).toBeDisabled();
+
+  await page.click('#btn-enable-lead-edit');
+  await expect(page.locator('#input-name')).toBeEnabled();
 
   await page.fill('#input-name', 'Robert Smith');
   await page.selectOption('#input-status', 'callback-requested');
@@ -192,7 +220,35 @@ test('can edit an existing lead', async ({ page }) => {
   await expect(page.locator('.badge-callback-requested')).toBeVisible();
 });
 
-test('clicking a map marker opens the edit modal for that lead', async ({ page }) => {
+test('logs a separate visit record for each knock with outcome and follow-up', async ({ page }) => {
+  await createLead({ name: 'Visit Log Lead', status: 'not-visited', knockCount: 0 });
+  await page.goto('/');
+
+  await page.click('.btn-edit');
+  await expect(page.locator('#modal-title')).toHaveText('Edit Lead');
+
+  await page.selectOption('#visit-outcome', 'no-answer');
+  await page.fill('#visit-disposition-reason', 'No response at front door');
+  await page.fill('#visit-next-follow-up', '2026-03-24T10:30');
+  await page.fill('#visit-notes', 'Left flyer at door.');
+  await page.click('#visit-form button[type="submit"]');
+
+  await expect(page.locator('#visit-history-list .visit-history-item')).toHaveCount(1);
+  await expect(page.locator('#visit-history-list')).toContainText('No response at front door');
+  await expect(page.locator('#visit-history-list')).toContainText('Left flyer at door.');
+  await expect(page.locator('#input-knock-count')).toHaveValue('1');
+
+  await page.selectOption('#visit-outcome', 'spoke-to-owner');
+  await page.fill('#visit-disposition-reason', 'Requested quote');
+  await page.fill('#visit-notes', 'Booked call for tomorrow afternoon.');
+  await page.click('#visit-form button[type="submit"]');
+
+  await expect(page.locator('#visit-history-list .visit-history-item')).toHaveCount(2);
+  await expect(page.locator('#input-knock-count')).toHaveValue('2');
+  await expect(page.locator('#input-status')).toHaveValue('spoke-to-owner');
+});
+
+test('clicking a map marker opens popup first and edit form only after explicit click', async ({ page }) => {
   await createLead({
     name: 'Marker Lead',
     status: 'not-visited',
@@ -204,9 +260,30 @@ test('clicking a map marker opens the edit modal for that lead', async ({ page }
   await expect(page.locator('.leaflet-marker-icon')).toHaveCount(1);
   await page.locator('.leaflet-marker-icon').click();
 
+  await expect(page.locator('#modal-overlay')).toBeHidden();
+  await expect(page.locator('.leaflet-popup-content')).toContainText('Marker Lead');
+  await page.click('[data-map-edit-id]');
+
   await expect(page.locator('#modal-overlay')).toBeVisible();
   await expect(page.locator('#modal-title')).toHaveText('Edit Lead');
   await expect(page.locator('#input-name')).toHaveValue('Marker Lead');
+});
+
+test('quick log visit button in marker popup opens visit workflow', async ({ page }) => {
+  await createLead({
+    name: 'Popup Visit Lead',
+    status: 'not-visited',
+    location: { lat: 39.82, lng: -98.57 },
+    address: { street: '200 Field Ave', city: 'Center', state: 'KS', postalCode: '67001', country: 'USA' },
+  });
+
+  await page.goto('/');
+  await page.locator('.leaflet-marker-icon').first().click();
+  await page.click('[data-map-visit-id]');
+
+  await expect(page.locator('#modal-overlay')).toBeVisible();
+  await expect(page.locator('#input-name')).toBeDisabled();
+  await expect(page.locator('#visit-outcome')).toBeFocused();
 });
 
 // ── Delete lead ───────────────────────────────────────────────────────────────

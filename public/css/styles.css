@@ -255,6 +255,10 @@ main {
   width: 100%;
 }
 
+.map-popup button + button {
+  margin-top: 0.35rem;
+}
+
 .saved-lead-marker-wrapper {
   background: transparent;
   border: none;
@@ -303,6 +307,22 @@ tbody tr { border-bottom: 1px solid var(--clr-border); transition: background .1
 tbody tr:last-child { border-bottom: none; }
 tbody tr:hover { background: #f9fafb; }
 tbody td { padding: 0.85rem 1rem; vertical-align: middle; }
+
+.address-link {
+  border: none;
+  background: none;
+  color: #1d4ed8;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.address-link:hover {
+  color: #1e40af;
+}
 
 .empty-message { color: var(--clr-muted); text-align: center; padding: 3rem 1rem; }
 
@@ -454,11 +474,84 @@ tbody td { padding: 0.85rem 1rem; vertical-align: middle; }
 }
 .form-error.hidden { display: none; }
 
+.form-lock-hint {
+  color: #92400e;
+  font-size: 0.83rem;
+  margin-bottom: 0.75rem;
+  background: #fef3c7;
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+}
+
+.form-lock-hint.hidden { display: none; }
+
 .form-actions {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
   margin-top: 0.5rem;
+}
+
+.visit-log-section {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--clr-border);
+}
+
+.visit-log-header {
+  margin-bottom: 0.75rem;
+}
+
+.visit-log-header h3 {
+  font-size: 1rem;
+  margin-bottom: 0.2rem;
+}
+
+.visit-log-header p {
+  color: var(--clr-muted);
+  font-size: 0.85rem;
+}
+
+.visit-grid {
+  margin-bottom: 0.5rem;
+}
+
+.visit-history-list {
+  list-style: none;
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.visit-history-item {
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius);
+  padding: 0.65rem 0.75rem;
+  background: #fafafa;
+}
+
+.visit-history-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.visit-history-meta {
+  font-size: 0.8rem;
+  color: var(--clr-muted);
+}
+
+.visit-history-notes {
+  font-size: 0.86rem;
+  white-space: pre-wrap;
+}
+
+.empty-message.compact {
+  padding: 0.65rem 0;
+  text-align: left;
 }
 
 /* ── Misc ────────────────────────────────────────── */

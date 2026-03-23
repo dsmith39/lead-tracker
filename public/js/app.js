@@ -39,6 +39,17 @@ const latInput        = document.getElementById('input-lat');
 const lngInput        = document.getElementById('input-lng');
 const notesInput      = document.getElementById('input-notes');
 const formError       = document.getElementById('form-error');
+const leadFormLockHint = document.getElementById('lead-form-lock-hint');
+const enableLeadEditButton = document.getElementById('btn-enable-lead-edit');
+const visitLogSection = document.getElementById('visit-log-section');
+const visitForm = document.getElementById('visit-form');
+const visitOutcomeInput = document.getElementById('visit-outcome');
+const visitDispositionReasonInput = document.getElementById('visit-disposition-reason');
+const visitNextFollowUpInput = document.getElementById('visit-next-follow-up');
+const visitNotesInput = document.getElementById('visit-notes');
+const visitFormError = document.getElementById('visit-form-error');
+const visitHistoryList = document.getElementById('visit-history-list');
+const visitHistoryEmpty = document.getElementById('visit-history-empty');
 
 const confirmOverlay  = document.getElementById('confirm-overlay');
 const btnConfirmDel   = document.getElementById('btn-confirm-delete');
@@ -52,6 +63,8 @@ let leadsCache = [];
 let mapAddModeEnabled = false;
 let searchMarker = null;
 let locatingUser = false;
+let visitHistory = [];
+let leadDetailsEditable = true;
 
 // ── Fetch helpers ─────────────────────────────────────────────────────────────
 async function apiFetch(url, options = {}) {
@@ -137,6 +150,16 @@ function setMapSearchFeedback(message) {
   mapSearchFeedback.textContent = message;
 }
 
+function showVisitFormError(message) {
+  visitFormError.textContent = message;
+  visitFormError.classList.remove('hidden');
+}
+
+function hideVisitFormError() {
+  visitFormError.textContent = '';
+  visitFormError.classList.add('hidden');
+}
+
 function setCurrentLocationButtonState(isLoading) {
   locatingUser = isLoading;
   currentLocationButton.classList.toggle('btn-loading', isLoading);
@@ -219,13 +242,116 @@ function setMapFieldValues(lat, lng) {
   updateMapSelectionStatus(Number(lat), Number(lng));
 }
 
+function renderVisitHistory() {
+  visitHistoryList.innerHTML = '';
+
+  if (!visitHistory.length) {
+    visitHistoryEmpty.classList.remove('hidden');
+    return;
+  }
+
+  visitHistoryEmpty.classList.add('hidden');
+
+  visitHistory.forEach((visit) => {
+    const item = document.createElement('li');
+    item.className = 'visit-history-item';
+    item.innerHTML = `
+      <div class="visit-history-top">
+        ${statusBadge(visit.outcome)}
+        <span class="visit-history-meta">${formatDateTime(visit.visitAt)}</span>
+      </div>
+      <div class="visit-history-meta">Disposition: ${escHtml(visit.dispositionReason || '—')}</div>
+      <div class="visit-history-meta">Next Follow-up: ${formatDateTime(visit.nextFollowUpAt)}</div>
+      <div class="visit-history-notes">${escHtml(visit.notes || 'No notes')}</div>
+    `;
+    visitHistoryList.appendChild(item);
+  });
+}
+
+function setVisitSectionMode(isExistingLead) {
+  const opacity = isExistingLead ? '1' : '0.55';
+  visitLogSection.style.opacity = opacity;
+  visitForm.querySelectorAll('input, select, textarea, button').forEach((el) => {
+    el.disabled = !isExistingLead;
+  });
+
+  if (!isExistingLead) {
+    visitHistory = [];
+    renderVisitHistory();
+  }
+}
+
+function leadDetailControls() {
+  return [
+    nameInput,
+    companyInput,
+    emailInput,
+    phoneInput,
+    statusInput,
+    homeTypeInput,
+    knockCountInput,
+    lastVisitInput,
+    streetInput,
+    cityInput,
+    stateInput,
+    postalInput,
+    countryInput,
+    latInput,
+    lngInput,
+    notesInput,
+  ];
+}
+
+function setLeadDetailsEditable(enabled, isExistingLead) {
+  leadDetailsEditable = enabled;
+
+  leadDetailControls().forEach((control) => {
+    control.disabled = !enabled;
+  });
+
+  const saveLeadButton = leadForm.querySelector('button[type="submit"]');
+  saveLeadButton.disabled = !enabled;
+  saveLeadButton.classList.toggle('hidden', isExistingLead && !enabled);
+
+  enableLeadEditButton.classList.toggle('hidden', !isExistingLead || enabled);
+  leadFormLockHint.classList.toggle('hidden', !isExistingLead || enabled);
+}
+
+async function loadVisitHistory(leadId) {
+  visitHistory = await apiFetch(`${API}/${leadId}/visits`);
+  renderVisitHistory();
+}
+
 function mapPopupHtml(lead) {
   return `
     <div class="map-popup">
       <strong>${escHtml(lead.name || 'Unnamed Lead')}</strong>
       <p>${escHtml(addressLine(lead.address))}</p>
+      <button class="btn btn-secondary" type="button" data-map-visit-id="${lead._id}">Quick Log Visit</button>
       <button class="btn btn-primary" type="button" data-map-edit-id="${lead._id}">Edit Lead</button>
     </div>`;
+}
+
+async function focusMapOnLeadAddress(lead) {
+  if (hasCoordinates(lead)) {
+    leadMap.setView([lead.location.lat, lead.location.lng], 17);
+    setMapSearchFeedback(`Centered on lead: ${lead.name}`);
+    return;
+  }
+
+  const query = addressLine(lead.address);
+  if (!query || query === '—') {
+    setMapSearchFeedback('This lead does not have a searchable address yet.');
+    return;
+  }
+
+  try {
+    setMapSearchFeedback(`Locating lead address: ${query}`);
+    const result = await apiFetch(`/api/geocode/search?q=${encodeURIComponent(query)}`);
+    focusMapOnSearchResult(result);
+  } catch (error) {
+    setMapSearchFeedback(error.message || 'Could not locate this lead address on the map.');
+  }
 }
 
 function savedLeadMarkerIcon(status) {
@@ -267,10 +393,6 @@ function renderMapMarkers(leads) {
         icon: savedLeadMarkerIcon(lead.status),
       });
       marker.bindPopup(mapPopupHtml(lead));
-      marker.on('click', async () => {
-        const freshLead = await apiFetch(`${API}/${lead._id}`);
-        openModal(freshLead);
-      });
       mapMarkersLayer.addLayer(marker);
     });
 }
@@ -315,9 +437,14 @@ function initializeMap() {
 function renderRow(lead) {
   const tr = document.createElement('tr');
   tr.dataset.id = lead._id;
+  const renderedAddress = addressLine(lead.address);
+  const addressCell = renderedAddress === '—'
+    ? '—'
+    : `<button type="button" class="address-link btn-zoom-address" data-id="${lead._id}" title="Zoom map to this lead">${escHtml(renderedAddress)}</button>`;
+
   tr.innerHTML = `
     <td><strong>${escHtml(lead.name)}</strong></td>
-    <td>${escHtml(addressLine(lead.address))}</td>
+    <td>${addressCell}</td>
     <td>${escHtml(formatHomeType(lead.homeType))}</td>
     <td>${escHtml(lead.company || '—')}</td>
     <td>${lead.email ? `<a href="mailto:${escHtml(lead.email)}">${escHtml(lead.email)}</a>` : '—'}</td>
@@ -418,6 +545,15 @@ function openModal(lead = null) {
     lngInput.value        = lead.location?.lng ?? '';
     notesInput.value      = lead.notes || '';
     updateMapSelectionStatus(Number(lead.location?.lat), Number(lead.location?.lng));
+    setVisitSectionMode(isEditing);
+    setLeadDetailsEditable(!isEditing, isEditing);
+    hideVisitFormError();
+    if (isEditing) {
+      loadVisitHistory(lead._id).catch(() => {
+        visitHistory = [];
+        renderVisitHistory();
+      });
+    }
   } else {
     modalTitle.textContent = 'Add Lead';
     leadIdInput.value = '';
@@ -425,6 +561,9 @@ function openModal(lead = null) {
     knockCountInput.value = '0';
     lastVisitInput.value = '';
     updateMapSelectionStatus(Number.NaN, Number.NaN);
+    setVisitSectionMode(false);
+    setLeadDetailsEditable(true, false);
+    hideVisitFormError();
   }
 
   modalOverlay.classList.remove('hidden');
@@ -450,6 +589,10 @@ function hideFormError() {
 leadForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   hideFormError();
+
+  if (!leadDetailsEditable) {
+    return;
+  }
 
   const payload = {
     name:    nameInput.value.trim(),
@@ -489,6 +632,42 @@ leadForm.addEventListener('submit', async (e) => {
   }
 });
 
+visitForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  hideVisitFormError();
+
+  const leadId = leadIdInput.value;
+  if (!leadId) {
+    showVisitFormError('Save the lead first before adding visit history.');
+    return;
+  }
+
+  try {
+    const result = await apiFetch(`${API}/${leadId}/visits`, {
+      method: 'POST',
+      body: JSON.stringify({
+        outcome: visitOutcomeInput.value,
+        notes: visitNotesInput.value.trim(),
+        dispositionReason: visitDispositionReasonInput.value.trim(),
+        nextFollowUpAt: visitNextFollowUpInput.value ? new Date(visitNextFollowUpInput.value).toISOString() : null,
+      }),
+    });
+
+    statusInput.value = result.lead.status;
+    knockCountInput.value = String(result.lead.knockCount);
+    lastVisitInput.value = toDateTimeLocalValue(result.lead.lastVisitAt);
+
+    visitNotesInput.value = '';
+    visitDispositionReasonInput.value = '';
+    visitNextFollowUpInput.value = '';
+
+    await loadVisitHistory(leadId);
+    await loadLeads();
+  } catch (err) {
+    showVisitFormError(err.message);
+  }
+});
+
 // ── Delete flow ───────────────────────────────────────────────────────────────
 function openConfirm(id) {
   pendingDeleteId = id;
@@ -517,7 +696,10 @@ tableBody.addEventListener('click', async (e) => {
   if (!btn) return;
   const id = btn.dataset.id;
 
-  if (btn.classList.contains('btn-edit')) {
+  if (btn.classList.contains('btn-zoom-address')) {
+    const lead = leadsCache.find((item) => item._id === id) || await apiFetch(`${API}/${id}`);
+    await focusMapOnLeadAddress(lead);
+  } else if (btn.classList.contains('btn-edit')) {
     const lead = await apiFetch(`${API}/${id}`);
     openModal(lead);
   } else if (btn.classList.contains('btn-delete')) {
@@ -532,6 +714,18 @@ document.addEventListener('click', async (e) => {
   openModal(lead);
 });
 
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-map-visit-id]');
+  if (!btn) return;
+
+  const lead = await apiFetch(`${API}/${btn.dataset.mapVisitId}`);
+  openModal(lead);
+
+  // Bring the rep straight to the visit workflow while lead details stay locked.
+  visitLogSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  visitOutcomeInput.focus();
+});
+
 // ── Toolbar event listeners ───────────────────────────────────────────────────
 searchInput.addEventListener('input', () => {
   clearTimeout(debounceTimer);
@@ -543,6 +737,10 @@ latInput.addEventListener('input', () => updateMapSelectionStatus(getCoordinateI
 lngInput.addEventListener('input', () => updateMapSelectionStatus(getCoordinateInputValue(latInput), getCoordinateInputValue(lngInput)));
 mapAddModeButton.addEventListener('click', () => {
   setMapAddMode(!mapAddModeEnabled);
+});
+enableLeadEditButton.addEventListener('click', () => {
+  setLeadDetailsEditable(true, true);
+  nameInput.focus();
 });
 mapSearchForm.addEventListener('submit', async (e) => {
   e.preventDefault();
