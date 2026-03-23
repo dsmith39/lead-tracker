@@ -75,6 +75,23 @@ test('clicking the map in browse mode does not open the add modal', async ({ pag
 });
 
 test('clicking the map in add mode opens the add modal with coordinates prefilled', async ({ page }) => {
+  await page.route('**/api/geocode/reverse**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        displayName: '123 Main St, Springfield, Illinois, USA',
+        address: {
+          street: '123 Main St',
+          city: 'Springfield',
+          state: 'Illinois',
+          postalCode: '62701',
+          country: 'USA',
+        },
+      }),
+    });
+  });
+
   await page.goto('/');
 
   await page.click('#btn-map-add-mode');
@@ -86,6 +103,11 @@ test('clicking the map in add mode opens the add modal with coordinates prefille
   await expect(page.locator('#modal-title')).toHaveText('Add Lead from Map');
   await expect(page.locator('#input-lat')).not.toHaveValue('');
   await expect(page.locator('#input-lng')).not.toHaveValue('');
+  await expect(page.locator('#input-address-street')).toHaveValue('123 Main St');
+  await expect(page.locator('#input-address-city')).toHaveValue('Springfield');
+  await expect(page.locator('#input-address-state')).toHaveValue('Illinois');
+  await expect(page.locator('#input-address-postal')).toHaveValue('62701');
+  await expect(page.locator('#input-address-country')).toHaveValue('USA');
 });
 
 test('searching the map jumps directly to the requested location', async ({ page }) => {

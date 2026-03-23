@@ -200,6 +200,19 @@ function focusMapOnCurrentLocation(lat, lng) {
   setMapSearchFeedback(`Centered on your location: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
 }
 
+async function reverseGeocodeCoordinates(lat, lng) {
+  try {
+    const result = await apiFetch(`/api/geocode/reverse?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`);
+    if (result.displayName) {
+      setMapSearchFeedback(`Address found: ${result.displayName}`);
+    }
+    return result.address || {};
+  } catch (error) {
+    setMapSearchFeedback('Address lookup unavailable. You can still enter the address manually.');
+    return {};
+  }
+}
+
 function setMapFieldValues(lat, lng) {
   latInput.value = Number(lat).toFixed(6);
   lngInput.value = Number(lng).toFixed(6);
@@ -267,15 +280,18 @@ function initializeMap() {
 
   mapMarkersLayer = L.layerGroup().addTo(leadMap);
 
-  leadMap.on('click', (event) => {
+  leadMap.on('click', async (event) => {
     if (!mapAddModeEnabled) {
       return;
     }
 
     const { lat, lng } = event.latlng;
     setMapAddMode(false);
+    setMapSearchFeedback('Looking up address for selected map point...');
+    const resolvedAddress = await reverseGeocodeCoordinates(lat, lng);
+
     openModal({
-      address: {},
+      address: resolvedAddress,
       location: { lat, lng },
       homeType: 'other',
       status: 'not-visited',
