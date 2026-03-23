@@ -228,6 +228,16 @@ function mapPopupHtml(lead) {
     </div>`;
 }
 
+function savedLeadMarkerIcon(status) {
+  const statusClass = String(status || 'not-visited').replace(/[^a-z0-9-]/gi, '');
+  return L.divIcon({
+    className: 'saved-lead-marker-wrapper',
+    html: `<span class="saved-lead-marker saved-lead-marker-${statusClass}" title="Saved lead location" aria-label="Saved lead location">●</span>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+  });
+}
+
 function fitMapToLeads(leads) {
   const leadsWithCoordinates = leads.filter(hasCoordinates);
   if (!leadMap || leadsWithCoordinates.length === 0) {
@@ -253,7 +263,9 @@ function renderMapMarkers(leads) {
   leads
     .filter(hasCoordinates)
     .forEach((lead) => {
-      const marker = L.marker([lead.location.lat, lead.location.lng]);
+      const marker = L.marker([lead.location.lat, lead.location.lng], {
+        icon: savedLeadMarkerIcon(lead.status),
+      });
       marker.bindPopup(mapPopupHtml(lead));
       marker.on('click', async () => {
         const freshLead = await apiFetch(`${API}/${lead._id}`);

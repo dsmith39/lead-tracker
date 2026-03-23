@@ -179,6 +179,43 @@ main {
   font-size: 0.88rem;
 }
 
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 0.85rem;
+  margin-bottom: 0.85rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: calc(var(--radius) - 2px);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.map-legend-title {
+  font-weight: 700;
+  color: #334155;
+  margin-right: 0.15rem;
+}
+
+.map-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: #334155;
+}
+
+.map-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 0 1px #ffffff, 0 0 0 2px rgba(15, 23, 42, 0.16);
+}
+
+.map-legend-dot-search {
+  background: #2563eb;
+}
+
 .lead-map {
   width: 100%;
   height: 420px;
@@ -217,6 +254,31 @@ main {
 .map-popup button {
   width: 100%;
 }
+
+.saved-lead-marker-wrapper {
+  background: transparent;
+  border: none;
+}
+
+.saved-lead-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 14px;
+  line-height: 1;
+  color: #ffffff;
+  box-shadow: 0 0 0 2px #ffffff, 0 2px 8px rgba(15, 23, 42, 0.35);
+}
+
+.saved-lead-marker-not-visited { background: #0369a1; }
+.saved-lead-marker-no-answer { background: #b45309; }
+.saved-lead-marker-spoke-to-owner { background: #15803d; }
+.saved-lead-marker-not-interested { background: #b91c1c; }
+.saved-lead-marker-callback-requested { background: #6d28d9; }
+.saved-lead-marker-sale-closed { background: #166534; }
 
 /* ── Table ───────────────────────────────────────── */
 .table-wrapper {
