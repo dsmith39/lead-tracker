@@ -1,7 +1,9 @@
-/* global fetch */
+/* global fetch, L */
 'use strict';
 
 const API = '/api/leads';
+const DEFAULT_MAP_CENTER = [39.8283, -98.5795];
+const DEFAULT_MAP_ZOOM = 4;
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const tableBody       = document.getElementById('leads-table-body');
@@ -9,6 +11,12 @@ const emptyRow        = document.getElementById('empty-row');
 const statsBar        = document.getElementById('stats-bar');
 const searchInput     = document.getElementById('search-input');
 const statusFilter    = document.getElementById('status-filter');
+const mapSearchForm   = document.getElementById('map-search-form');
+const mapSearchInput  = document.getElementById('map-search-input');
+const currentLocationButton = document.getElementById('btn-current-location');
+const mapAddModeButton = document.getElementById('btn-map-add-mode');
+const mapSelectionStatus = document.getElementById('map-selection-status');
+const mapSearchFeedback = document.getElementById('map-search-feedback');
 
 const modalOverlay    = document.getElementById('modal-overlay');
 const modalTitle      = document.getElementById('modal-title');
@@ -38,6 +46,12 @@ const btnConfirmDel   = document.getElementById('btn-confirm-delete');
 // ── State ─────────────────────────────────────────────────────────────────────
 let pendingDeleteId = null;
 let debounceTimer   = null;
+let leadMap = null;
+let mapMarkersLayer = null;
+let leadsCache = [];
+let mapAddModeEnabled = false;
+let searchMarker = null;
+let locatingUser = false;
 
 // ── Fetch helpers ─────────────────────────────────────────────────────────────
 async function apiFetch(url, options = {}) {
@@ -96,6 +110,178 @@ function formatHomeType(homeType) {
     .split('-')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+}
+
+function hasCoordinates(lead) {
+  return Number.isFinite(lead?.location?.lat) && Number.isFinite(lead?.location?.lng);
+}
+
+function formatCoordinates(lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return mapAddModeEnabled ? 'Add mode armed: click the map' : 'Map browsing mode';
+  return `Selected: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+}
+
+function getCoordinateInputValue(input) {
+  if (input.value === '') {
+    return Number.NaN;
+  }
+
+  return Number(input.value);
+}
+
+function updateMapSelectionStatus(lat, lng) {
+  mapSelectionStatus.textContent = formatCoordinates(lat, lng);
+}
+
+function setMapSearchFeedback(message) {
+  mapSearchFeedback.textContent = message;
+}
+
+function setCurrentLocationButtonState(isLoading) {
+  locatingUser = isLoading;
+  currentLocationButton.classList.toggle('btn-loading', isLoading);
+  currentLocationButton.textContent = isLoading ? 'Locating...' : 'My Location';
+}
+
+function syncMapAddModeUi() {
+  mapAddModeButton.classList.toggle('btn-map-active', mapAddModeEnabled);
+  mapAddModeButton.textContent = mapAddModeEnabled ? 'Cancel Map Add' : 'Add Lead on Map';
+  if (!Number.isFinite(getCoordinateInputValue(latInput)) || !Number.isFinite(getCoordinateInputValue(lngInput))) {
+    updateMapSelectionStatus(Number.NaN, Number.NaN);
+  }
+}
+
+function setMapAddMode(enabled) {
+  mapAddModeEnabled = enabled;
+  syncMapAddModeUi();
+}
+
+function renderSearchMarker(result) {
+  if (!leadMap) return;
+
+  if (searchMarker) {
+    leadMap.removeLayer(searchMarker);
+  }
+
+  searchMarker = L.marker([result.lat, result.lng], { opacity: 0.85 })
+    .addTo(leadMap)
+    .bindPopup(`<div class="map-popup"><strong>Search Result</strong><p>${escHtml(result.displayName)}</p></div>`);
+}
+
+function focusMapOnSearchResult(result) {
+  if (!leadMap) return;
+
+  if (Array.isArray(result.boundingBox) && result.boundingBox.length === 4 && result.boundingBox.every(Number.isFinite)) {
+    const bounds = L.latLngBounds(
+      [result.boundingBox[0], result.boundingBox[2]],
+      [result.boundingBox[1], result.boundingBox[3]]
+    );
+    leadMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+  } else {
+    leadMap.flyTo([result.lat, result.lng], 16, { duration: 0.8 });
+  }
+
+  renderSearchMarker(result);
+  setMapSearchFeedback(`Centered on: ${result.displayName}`);
+}
+
+function focusMapOnCurrentLocation(lat, lng) {
+  if (!leadMap) return;
+
+  if (searchMarker) {
+    leadMap.removeLayer(searchMarker);
+  }
+
+  searchMarker = L.marker([lat, lng], { opacity: 0.9 })
+    .addTo(leadMap)
+    .bindPopup('<div class="map-popup"><strong>Your Location</strong><p>Map centered on your current position.</p></div>');
+
+  leadMap.setView([lat, lng], 16);
+  setMapSearchFeedback(`Centered on your location: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+}
+
+function setMapFieldValues(lat, lng) {
+  latInput.value = Number(lat).toFixed(6);
+  lngInput.value = Number(lng).toFixed(6);
+  updateMapSelectionStatus(Number(lat), Number(lng));
+}
+
+function mapPopupHtml(lead) {
+  return `
+    <div class="map-popup">
+      <strong>${escHtml(lead.name || 'Unnamed Lead')}</strong>
+      <p>${escHtml(addressLine(lead.address))}</p>
+      <button class="btn btn-primary" type="button" data-map-edit-id="${lead._id}">Edit Lead</button>
+    </div>`;
+}
+
+function fitMapToLeads(leads) {
+  const leadsWithCoordinates = leads.filter(hasCoordinates);
+  if (!leadMap || leadsWithCoordinates.length === 0) {
+    return;
+  }
+
+  if (leadsWithCoordinates.length === 1) {
+    leadMap.setView([leadsWithCoordinates[0].location.lat, leadsWithCoordinates[0].location.lng], 15);
+    return;
+  }
+
+  const bounds = L.latLngBounds(
+    leadsWithCoordinates.map((lead) => [lead.location.lat, lead.location.lng])
+  );
+  leadMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+}
+
+function renderMapMarkers(leads) {
+  if (!leadMap || !mapMarkersLayer) return;
+
+  mapMarkersLayer.clearLayers();
+
+  leads
+    .filter(hasCoordinates)
+    .forEach((lead) => {
+      const marker = L.marker([lead.location.lat, lead.location.lng]);
+      marker.bindPopup(mapPopupHtml(lead));
+      marker.on('click', async () => {
+        const freshLead = await apiFetch(`${API}/${lead._id}`);
+        openModal(freshLead);
+      });
+      mapMarkersLayer.addLayer(marker);
+    });
+}
+
+function initializeMap() {
+  if (leadMap || typeof L === 'undefined') return;
+
+  leadMap = L.map('lead-map', {
+    zoomControl: true,
+    attributionControl: true,
+  }).setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM);
+
+  window.__leadTrackerMap = leadMap;
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors',
+  }).addTo(leadMap);
+
+  mapMarkersLayer = L.layerGroup().addTo(leadMap);
+
+  leadMap.on('click', (event) => {
+    if (!mapAddModeEnabled) {
+      return;
+    }
+
+    const { lat, lng } = event.latlng;
+    setMapAddMode(false);
+    openModal({
+      address: {},
+      location: { lat, lng },
+      homeType: 'other',
+      status: 'not-visited',
+      knockCount: 0,
+    });
+  });
 }
 
 function renderRow(lead) {
@@ -158,6 +344,7 @@ async function loadLeads() {
   if (status !== 'all') params.set('status', status);
 
   const leads = await apiFetch(`${API}?${params}`);
+  leadsCache = leads;
 
   // Clear existing rows (keep emptyRow in DOM for reference)
   tableBody.querySelectorAll('tr:not(#empty-row)').forEach(r => r.remove());
@@ -170,6 +357,11 @@ async function loadLeads() {
   }
 
   renderStats(leads);
+  renderMapMarkers(leads);
+
+  if (search || status !== 'all') {
+    fitMapToLeads(leads);
+  }
 }
 
 // ── Modal helpers ─────────────────────────────────────────────────────────────
@@ -178,13 +370,14 @@ function openModal(lead = null) {
   hideFormError();
 
   if (lead) {
-    modalTitle.textContent = 'Edit Lead';
-    leadIdInput.value     = lead._id;
-    nameInput.value       = lead.name;
+    const isEditing = Boolean(lead._id);
+    modalTitle.textContent = isEditing ? 'Edit Lead' : 'Add Lead from Map';
+    leadIdInput.value     = lead._id || '';
+    nameInput.value       = lead.name || '';
     companyInput.value    = lead.company || '';
     emailInput.value      = lead.email || '';
     phoneInput.value      = lead.phone || '';
-    statusInput.value     = lead.status;
+    statusInput.value     = lead.status || 'not-visited';
     homeTypeInput.value   = lead.homeType || 'other';
     knockCountInput.value = lead.knockCount ?? 0;
     lastVisitInput.value  = toDateTimeLocalValue(lead.lastVisitAt);
@@ -196,12 +389,14 @@ function openModal(lead = null) {
     latInput.value        = lead.location?.lat ?? '';
     lngInput.value        = lead.location?.lng ?? '';
     notesInput.value      = lead.notes || '';
+    updateMapSelectionStatus(Number(lead.location?.lat), Number(lead.location?.lng));
   } else {
     modalTitle.textContent = 'Add Lead';
     leadIdInput.value = '';
     homeTypeInput.value = 'other';
     knockCountInput.value = '0';
     lastVisitInput.value = '';
+    updateMapSelectionStatus(Number.NaN, Number.NaN);
   }
 
   modalOverlay.classList.remove('hidden');
@@ -210,6 +405,7 @@ function openModal(lead = null) {
 
 function closeModal() {
   modalOverlay.classList.add('hidden');
+  updateMapSelectionStatus(getCoordinateInputValue(latInput), getCoordinateInputValue(lngInput));
 }
 
 function showFormError(msg) {
@@ -301,6 +497,13 @@ tableBody.addEventListener('click', async (e) => {
   }
 });
 
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-map-edit-id]');
+  if (!btn) return;
+  const lead = await apiFetch(`${API}/${btn.dataset.mapEditId}`);
+  openModal(lead);
+});
+
 // ── Toolbar event listeners ───────────────────────────────────────────────────
 searchInput.addEventListener('input', () => {
   clearTimeout(debounceTimer);
@@ -308,6 +511,61 @@ searchInput.addEventListener('input', () => {
 });
 
 statusFilter.addEventListener('change', loadLeads);
+latInput.addEventListener('input', () => updateMapSelectionStatus(getCoordinateInputValue(latInput), getCoordinateInputValue(lngInput)));
+lngInput.addEventListener('input', () => updateMapSelectionStatus(getCoordinateInputValue(latInput), getCoordinateInputValue(lngInput)));
+mapAddModeButton.addEventListener('click', () => {
+  setMapAddMode(!mapAddModeEnabled);
+});
+mapSearchForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const query = mapSearchInput.value.trim();
+  if (!query) {
+    setMapSearchFeedback('Enter an address, city, ZIP, or neighborhood to jump the map.');
+    return;
+  }
+
+  try {
+    setMapSearchFeedback(`Searching for: ${query}`);
+    const result = await apiFetch(`${'/api/geocode/search'}?q=${encodeURIComponent(query)}`);
+    focusMapOnSearchResult(result);
+  } catch (error) {
+    setMapSearchFeedback(error.message);
+  }
+});
+currentLocationButton.addEventListener('click', () => {
+  if (locatingUser) {
+    return;
+  }
+
+  if (!navigator.geolocation) {
+    setMapSearchFeedback('Geolocation is not supported by this browser.');
+    return;
+  }
+
+  setCurrentLocationButtonState(true);
+  setMapSearchFeedback('Locating your current position...');
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const { latitude, longitude } = position.coords;
+      focusMapOnCurrentLocation(latitude, longitude);
+      setCurrentLocationButtonState(false);
+    },
+    (error) => {
+      const message = error && error.code === 1
+        ? 'Location access was denied.'
+        : 'Unable to determine your current location.';
+      setMapSearchFeedback(message);
+      setCurrentLocationButtonState(false);
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0,
+    }
+  );
+});
 
 // ── Modal open/close wiring ───────────────────────────────────────────────────
 document.getElementById('btn-open-modal').addEventListener('click', () => openModal());
@@ -321,4 +579,6 @@ modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) c
 confirmOverlay.addEventListener('click', (e) => { if (e.target === confirmOverlay) closeConfirm(); });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
+initializeMap();
+syncMapAddModeUi();
 loadLeads();

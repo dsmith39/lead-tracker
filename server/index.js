@@ -9,9 +9,11 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use('/vendor/leaflet', express.static(path.join(__dirname, '..', 'node_modules', 'leaflet', 'dist')));
 
 // Routes
 app.use('/api/leads', require('./routes/leads'));
+app.use('/api/geocode', require('./routes/geocode'));
 
 // Serve frontend
 app.get('*', (req, res) => {

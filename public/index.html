@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Lead Tracker</title>
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
@@ -37,6 +38,31 @@
 
     <!-- Stats bar -->
     <div class="stats" id="stats-bar"></div>
+
+    <section class="map-panel">
+      <div class="map-panel-header">
+        <div>
+          <h2>Canvassing Map</h2>
+          <p>Use map mode to drop a new lead at a specific location. Click an existing marker to edit that lead.</p>
+        </div>
+        <div class="map-panel-actions">
+          <form id="map-search-form" class="map-search-form">
+            <input
+              type="text"
+              id="map-search-input"
+              placeholder="Search address, city, ZIP, or neighborhood"
+              autocomplete="off"
+            />
+            <button id="btn-map-search" type="submit" class="btn btn-secondary">Go To Location</button>
+          </form>
+          <button id="btn-current-location" type="button" class="btn btn-secondary">My Location</button>
+          <button id="btn-map-add-mode" type="button" class="btn btn-secondary">Add Lead on Map</button>
+          <div id="map-selection-status" class="map-selection-status">Map browsing mode</div>
+        </div>
+      </div>
+      <div id="map-search-feedback" class="map-search-feedback">Search the map to jump directly to a canvassing area.</div>
+      <div id="lead-map" class="lead-map" aria-label="Lead map"></div>
+    </section>
 
     <!-- Leads table -->
     <div class="table-wrapper">
@@ -198,6 +224,7 @@
     </div>
   </div>
 
+  <script src="/vendor/leaflet/leaflet.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

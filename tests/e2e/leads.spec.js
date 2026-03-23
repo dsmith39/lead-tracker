@@ -65,6 +65,81 @@ test('can add a new lead', async ({ page }) => {
   await expect(page.locator('.badge-spoke-to-owner')).toBeVisible();
 });
 
+test('clicking the map in browse mode does not open the add modal', async ({ page }) => {
+  await page.goto('/');
+
+  await page.click('#lead-map', { position: { x: 220, y: 180 } });
+
+  await expect(page.locator('#modal-overlay')).toBeHidden();
+  await expect(page.locator('#map-selection-status')).toContainText('Map browsing mode');
+});
+
+test('clicking the map in add mode opens the add modal with coordinates prefilled', async ({ page }) => {
+  await page.goto('/');
+
+  await page.click('#btn-map-add-mode');
+  await expect(page.locator('#map-selection-status')).toContainText('Add mode armed');
+
+  await page.click('#lead-map', { position: { x: 220, y: 180 } });
+
+  await expect(page.locator('#modal-overlay')).toBeVisible();
+  await expect(page.locator('#modal-title')).toHaveText('Add Lead from Map');
+  await expect(page.locator('#input-lat')).not.toHaveValue('');
+  await expect(page.locator('#input-lng')).not.toHaveValue('');
+});
+
+test('searching the map jumps directly to the requested location', async ({ page }) => {
+  await page.route('**/api/geocode/search**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        displayName: 'Denver, Colorado, USA',
+        lat: 39.7392,
+        lng: -104.9903,
+        boundingBox: [39.6, 39.9, -105.2, -104.8],
+      }),
+    });
+  });
+
+  await page.goto('/');
+
+  await page.fill('#map-search-input', 'Denver, CO');
+  await page.click('#btn-map-search');
+
+  await expect(page.locator('#map-search-feedback')).toContainText('Centered on: Denver, Colorado, USA');
+
+  const mapCenter = await page.evaluate(() => {
+    const center = window.__leadTrackerMap.getCenter();
+    return { lat: center.lat, lng: center.lng };
+  });
+
+  expect(mapCenter.lat).toBeGreaterThan(39.6);
+  expect(mapCenter.lat).toBeLessThan(39.9);
+  expect(mapCenter.lng).toBeGreaterThan(-105.2);
+  expect(mapCenter.lng).toBeLessThan(-104.8);
+});
+
+test('clicking my location centers the map on the user position', async ({ page, context }) => {
+  await context.grantPermissions(['geolocation']);
+  await context.setGeolocation({ latitude: 33.7488, longitude: -84.3877 });
+
+  await page.goto('/');
+
+  await page.click('#btn-current-location');
+  await expect(page.locator('#map-search-feedback')).toContainText('Centered on your location');
+
+  const mapCenter = await page.evaluate(() => {
+    const center = window.__leadTrackerMap.getCenter();
+    return { lat: center.lat, lng: center.lng };
+  });
+
+  expect(mapCenter.lat).toBeGreaterThan(33.7);
+  expect(mapCenter.lat).toBeLessThan(33.8);
+  expect(mapCenter.lng).toBeGreaterThan(-84.5);
+  expect(mapCenter.lng).toBeLessThan(-84.3);
+});
+
 test('shows validation error when name is empty', async ({ page }) => {
   await page.goto('/');
   await page.click('#btn-open-modal');
@@ -93,6 +168,23 @@ test('can edit an existing lead', async ({ page }) => {
   await expect(page.locator('#modal-overlay')).toBeHidden();
   await expect(page.locator('tbody tr:not(#empty-row) td').first()).toContainText('Robert Smith');
   await expect(page.locator('.badge-callback-requested')).toBeVisible();
+});
+
+test('clicking a map marker opens the edit modal for that lead', async ({ page }) => {
+  await createLead({
+    name: 'Marker Lead',
+    status: 'not-visited',
+    location: { lat: 39.8283, lng: -98.5795 },
+    address: { street: '100 Route Rd', city: 'Center', state: 'KS', postalCode: '67000', country: 'USA' },
+  });
+  await page.goto('/');
+
+  await expect(page.locator('.leaflet-marker-icon')).toHaveCount(1);
+  await page.locator('.leaflet-marker-icon').click();
+
+  await expect(page.locator('#modal-overlay')).toBeVisible();
+  await expect(page.locator('#modal-title')).toHaveText('Edit Lead');
+  await expect(page.locator('#input-name')).toHaveValue('Marker Lead');
 });
 
 // ── Delete lead ───────────────────────────────────────────────────────────────
