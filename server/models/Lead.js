@@ -2,6 +2,12 @@ const mongoose = require('mongoose');
 
 const leadSchema = new mongoose.Schema(
   {
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
+      default: null,
+      index: true,
+    },
     name: {
       type: String,
       required: [true, 'Name is required'],
@@ -121,5 +127,8 @@ const leadSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+leadSchema.index({ organizationId: 1, createdAt: -1 });
+leadSchema.index({ organizationId: 1, assignedRepId: 1, 'routePlan.date': 1 });
 
 module.exports = mongoose.model('Lead', leadSchema);

@@ -9,6 +9,11 @@ function trimString(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function normalizeOrganizationId(value) {
+  const organizationId = trimString(value);
+  return organizationId || null;
+}
+
 async function normalizeRoutesForRep(repId) {
   const affectedRoutes = await Lead.aggregate([
     {
@@ -54,6 +59,10 @@ async function normalizeRoutesForRep(repId) {
 router.get('/', async (req, res) => {
   try {
     const filter = {};
+    const organizationId = normalizeOrganizationId(req.query.organizationId);
+    if (organizationId) {
+      filter.organizationId = organizationId;
+    }
     if (req.query.teamId) {
       filter.teamId = req.query.teamId;
     }
@@ -80,6 +89,7 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
+    let organizationId = normalizeOrganizationId(req.body.organizationId);
     let teamId = req.body.teamId || null;
     if (teamId) {
       const team = await Team.findById(teamId);
@@ -87,9 +97,13 @@ router.post('/', async (req, res) => {
         return res.status(400).json({ error: 'Selected team was not found' });
       }
       teamId = team._id;
+      if (!organizationId && team.organizationId) {
+        organizationId = team.organizationId;
+      }
     }
 
     const rep = await Rep.create({
+      organizationId,
       name: trimString(req.body.name),
       email: trimString(req.body.email),
       phone: trimString(req.body.phone),
@@ -104,6 +118,7 @@ router.post('/', async (req, res) => {
       email: createdRep.email,
       phone: createdRep.phone,
       active: createdRep.active,
+      organizationId: createdRep.organizationId || null,
       teamId: createdRep.teamId?._id || null,
       teamName: createdRep.teamId?.name || '',
     });

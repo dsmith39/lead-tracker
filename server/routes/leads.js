@@ -16,6 +16,11 @@ function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function normalizeOrganizationId(value) {
+  const organizationId = trimString(value);
+  return organizationId || null;
+}
+
 function normalizeRouteDate(value) {
   const routeDate = trimString(value);
 
@@ -138,6 +143,7 @@ async function normalizeLeadPayload(body = {}) {
   const routeOrder = normalizeRouteOrder(body.routePlan?.order);
 
   return {
+    organizationId: normalizeOrganizationId(body.organizationId),
     name: trimString(body.name),
     email: trimString(body.email),
     phone: trimString(body.phone),
@@ -164,17 +170,21 @@ async function normalizeLeadPayload(body = {}) {
   };
 }
 
-function buildRepRouteFilter(assignedRepId, assignedRepName, routeDate) {
+function buildRepRouteFilter(assignedRepId, assignedRepName, routeDate, organizationId = null) {
   const normalizedRouteDate = trimString(routeDate);
   if (!normalizedRouteDate) {
     return null;
   }
 
   if (assignedRepId) {
-    return {
+    const filter = {
       assignedRepId,
       'routePlan.date': normalizedRouteDate,
     };
+    if (organizationId) {
+      filter.organizationId = organizationId;
+    }
+    return filter;
   }
 
   const repName = trimString(assignedRepName);
@@ -182,14 +192,18 @@ function buildRepRouteFilter(assignedRepId, assignedRepName, routeDate) {
     return null;
   }
 
-  return {
+  const filter = {
     assignedRep: repName,
     'routePlan.date': normalizedRouteDate,
   };
+  if (organizationId) {
+    filter.organizationId = organizationId;
+  }
+  return filter;
 }
 
-async function normalizeRouteOrders({ assignedRepId = null, assignedRepName = '', routeDate = null }) {
-  const routeFilter = buildRepRouteFilter(assignedRepId, assignedRepName, routeDate);
+async function normalizeRouteOrders({ assignedRepId = null, assignedRepName = '', routeDate = null, organizationId = null }) {
+  const routeFilter = buildRepRouteFilter(assignedRepId, assignedRepName, routeDate, organizationId);
   if (!routeFilter) {
     return;
   }
@@ -222,6 +236,7 @@ async function normalizeRouteOrders({ assignedRepId = null, assignedRepName = ''
 
 function routeContextFromLead(lead) {
   return {
+    organizationId: lead.organizationId || null,
     assignedRepId: lead.assignedRepId || null,
     assignedRepName: lead.assignedRep || '',
     routeDate: lead.routePlan?.date || null,
@@ -231,8 +246,13 @@ function routeContextFromLead(lead) {
 // GET all leads (with optional search/filter)
 router.get('/', async (req, res) => {
   try {
-    const { search, status, assignedRepId, assignedTeamId, routeDate, turfType, turfLabel } = req.query;
+    const { search, status, assignedRepId, assignedTeamId, routeDate, turfType, turfLabel, organizationId } = req.query;
     const filter = {};
+
+    const normalizedOrganizationId = normalizeOrganizationId(organizationId);
+    if (normalizedOrganizationId) {
+      filter.organizationId = normalizedOrganizationId;
+    }
 
     if (status && status !== 'all') {
       filter.status = status;
@@ -309,7 +329,12 @@ router.patch('/:id/route-plan', async (req, res) => {
       let nextOrder = routeOrder;
 
       if (nextOrder === null) {
-        const routeFilter = buildRepRouteFilter(assignment.assignedRepId, assignment.assignedRepName, routeDate);
+        const routeFilter = buildRepRouteFilter(
+          assignment.assignedRepId,
+          assignment.assignedRepName,
+          routeDate,
+          lead.organizationId || normalizeOrganizationId(req.body.organizationId)
+        );
         const existingCount = await Lead.countDocuments({
           ...routeFilter,
           _id: { $ne: lead._id },
@@ -355,7 +380,12 @@ router.patch('/route-plan/reorder', async (req, res) => {
       return res.status(400).json({ error: 'Rep and route date are required to reorder a route' });
     }
 
-    const routeFilter = buildRepRouteFilter(assignment.assignedRepId, assignment.assignedRepName, routeDate);
+    const routeFilter = buildRepRouteFilter(
+      assignment.assignedRepId,
+      assignment.assignedRepName,
+      routeDate,
+      normalizeOrganizationId(req.body.organizationId)
+    );
     const routeLeads = await Lead.find(routeFilter);
     const routeLeadMap = new Map(routeLeads.map((lead) => [String(lead._id), lead]));
     const orderedLeads = [];
@@ -441,6 +471,7 @@ router.post('/:id/visits', async (req, res) => {
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
     const visit = await Visit.create({
+      organizationId: lead.organizationId || null,
       lead: lead._id,
       outcome: req.body.outcome,
       notes: req.body.notes,

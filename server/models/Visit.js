@@ -2,6 +2,12 @@ const mongoose = require('mongoose');
 
 const visitSchema = new mongoose.Schema(
   {
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
+      default: null,
+      index: true,
+    },
     lead: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Lead',
@@ -34,5 +40,7 @@ const visitSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+visitSchema.index({ organizationId: 1, lead: 1, visitAt: -1 });
 
 module.exports = mongoose.model('Visit', visitSchema);

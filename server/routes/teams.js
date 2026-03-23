@@ -8,9 +8,20 @@ function trimString(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function normalizeOrganizationId(value) {
+  const organizationId = trimString(value);
+  return organizationId || null;
+}
+
 router.get('/', async (req, res) => {
   try {
-    const teams = await Team.find().sort({ name: 1 });
+    const filter = {};
+    const organizationId = normalizeOrganizationId(req.query.organizationId);
+    if (organizationId) {
+      filter.organizationId = organizationId;
+    }
+
+    const teams = await Team.find(filter).sort({ name: 1 });
     res.json(teams);
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -20,6 +31,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const team = await Team.create({
+      organizationId: normalizeOrganizationId(req.body.organizationId),
       name: trimString(req.body.name),
       notes: trimString(req.body.notes),
     });
