@@ -1,6 +1,7 @@
 const Organization = require('../models/Organization');
 const AppUser = require('../models/AppUser');
 const Membership = require('../models/Membership');
+const jwt = require('jsonwebtoken');
 
 const ROLE_ORDER = {
   canvasser: 10,
@@ -27,15 +28,100 @@ function roleAtLeast(role, minRole) {
   return roleWeight >= minRoleWeight;
 }
 
-async function resolveOrganization(req, allowFallback) {
+function parseBearerToken(req) {
+  const authHeader = trimString(req.header('authorization'));
+  if (!authHeader) {
+    return '';
+  }
+
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  return match ? trimString(match[1]) : '';
+}
+
+function getJwtConfig() {
+  const algorithm = trimString(process.env.AUTH_JWT_ALGORITHM || 'HS256').toUpperCase();
+  const issuer = trimString(process.env.AUTH_JWT_ISSUER);
+  const audience = trimString(process.env.AUTH_JWT_AUDIENCE);
+  const secret = process.env.AUTH_JWT_SECRET;
+  const publicKey = process.env.AUTH_JWT_PUBLIC_KEY;
+
+  return {
+    algorithm,
+    issuer,
+    audience,
+    secret,
+    publicKey,
+  };
+}
+
+function buildVerifyKey(config) {
+  const isHmac = config.algorithm.startsWith('HS');
+  if (isHmac) {
+    return config.secret || '';
+  }
+
+  if (!config.publicKey) {
+    return '';
+  }
+
+  // Allow multiline PEM values in environment variables.
+  return config.publicKey.replace(/\\n/g, '\n');
+}
+
+async function verifyJwtIdentity(req) {
+  const token = parseBearerToken(req);
+  if (!token) {
+    return null;
+  }
+
+  const config = getJwtConfig();
+  const verifyKey = buildVerifyKey(config);
+  if (!verifyKey) {
+    throw new Error('JWT verification is not configured');
+  }
+
+  const verifyOptions = {
+    algorithms: [config.algorithm],
+  };
+  if (config.issuer) {
+    verifyOptions.issuer = config.issuer;
+  }
+  if (config.audience) {
+    verifyOptions.audience = config.audience;
+  }
+
+  const claims = jwt.verify(token, verifyKey, verifyOptions);
+
+  return {
+    provider: 'jwt',
+    subject: trimString(claims.sub),
+    email: trimString(claims.email || claims.preferred_username || claims.upn).toLowerCase(),
+    displayName: trimString(claims.name),
+    organizationId: trimString(claims.organizationId || claims.org_id || claims.orgId),
+    organizationSlug: trimString(claims.organizationSlug || claims.org_slug || claims.orgSlug).toLowerCase(),
+    claims,
+  };
+}
+
+async function resolveOrganization(req, allowFallback, identity = null) {
+  const tokenOrganizationId = trimString(identity?.organizationId);
+  const tokenOrganizationSlug = trimString(identity?.organizationSlug).toLowerCase();
   const organizationId = trimString(req.header('x-organization-id'));
   const organizationSlug = trimString(req.header('x-organization-slug') || req.header('x-org-slug')).toLowerCase();
 
-  if (organizationId) {
+  if (tokenOrganizationId) {
+    return Organization.findOne({ _id: tokenOrganizationId, status: 'active' });
+  }
+
+  if (tokenOrganizationSlug) {
+    return Organization.findOne({ slug: tokenOrganizationSlug, status: 'active' });
+  }
+
+  if (allowFallback && organizationId) {
     return Organization.findOne({ _id: organizationId, status: 'active' });
   }
 
-  if (organizationSlug) {
+  if (allowFallback && organizationSlug) {
     return Organization.findOne({ slug: organizationSlug, status: 'active' });
   }
 
@@ -56,12 +142,47 @@ async function resolveOrganization(req, allowFallback) {
   return fallbackOrganization;
 }
 
-async function resolveUser(req, allowFallback) {
+async function resolveUser(req, allowFallback, identity = null) {
+  const tokenEmail = trimString(identity?.email).toLowerCase();
+  const tokenProvider = trimString(identity?.provider);
+  const tokenSubject = trimString(identity?.subject);
+
+  if (tokenProvider && tokenSubject) {
+    let user = await AppUser.findOne({
+      externalAuthProvider: tokenProvider,
+      externalAuthSubject: tokenSubject,
+    });
+
+    if (!user && tokenEmail) {
+      user = await AppUser.findOne({ email: tokenEmail });
+      if (user) {
+        user.externalAuthProvider = tokenProvider;
+        user.externalAuthSubject = tokenSubject;
+        if (!user.displayName && identity.displayName) {
+          user.displayName = identity.displayName;
+        }
+        await user.save();
+      }
+    }
+
+    if (user) {
+      return user;
+    }
+
+    return AppUser.create({
+      externalAuthProvider: tokenProvider,
+      externalAuthSubject: tokenSubject,
+      email: tokenEmail || `${tokenProvider}-${tokenSubject}@local.invalid`,
+      displayName: trimString(identity.displayName),
+      active: true,
+    });
+  }
+
   const email = trimString(req.header('x-user-email')).toLowerCase();
   const provider = trimString(req.header('x-auth-provider'));
   const subject = trimString(req.header('x-auth-subject'));
 
-  if (provider && subject) {
+  if (allowFallback && provider && subject) {
     let user = await AppUser.findOne({
       externalAuthProvider: provider,
       externalAuthSubject: subject,
@@ -89,7 +210,7 @@ async function resolveUser(req, allowFallback) {
     });
   }
 
-  if (email) {
+  if (allowFallback && email) {
     const existing = await AppUser.findOne({ email });
     if (existing) {
       return existing;
@@ -123,13 +244,24 @@ function requireTenantContext({ minRole = 'canvasser' } = {}) {
   return async function tenantContextMiddleware(req, res, next) {
     try {
       const allowFallback = getBooleanFromEnv('ALLOW_LEGACY_TENANT_FALLBACK', true);
+      let identity = null;
 
-      const organization = await resolveOrganization(req, allowFallback);
+      try {
+        identity = await verifyJwtIdentity(req);
+      } catch (error) {
+        return res.status(401).json({ error: 'Invalid bearer token' });
+      }
+
+      if (!allowFallback && !identity) {
+        return res.status(401).json({ error: 'Bearer token is required' });
+      }
+
+      const organization = await resolveOrganization(req, allowFallback, identity);
       if (!organization) {
         return res.status(401).json({ error: 'Organization context is required' });
       }
 
-      const user = await resolveUser(req, allowFallback);
+      const user = await resolveUser(req, allowFallback, identity);
       if (!user || !user.active) {
         return res.status(401).json({ error: 'User context is required' });
       }
@@ -164,6 +296,7 @@ function requireTenantContext({ minRole = 'canvasser' } = {}) {
         userEmail: user.email,
         membershipId: membership._id,
         role: membership.role,
+        authProvider: identity?.provider || 'legacy',
       };
 
       return next();

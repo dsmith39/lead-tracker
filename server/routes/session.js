@@ -13,6 +13,7 @@ router.get('/me', async (req, res) => {
       slug: req.tenant.organizationSlug,
     },
     role: req.tenant.role,
+    authProvider: req.tenant.authProvider,
   });
 });
 

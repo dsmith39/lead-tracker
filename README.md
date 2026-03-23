@@ -135,6 +135,21 @@ Required:
 
 Optional:
 - PORT: Express server port (default 3000)
+- ALLOW_LEGACY_TENANT_FALLBACK: allows local header/fallback auth bootstrap (default true for local/dev)
+- DEFAULT_ORGANIZATION_SLUG: fallback org slug when legacy fallback is enabled (default default-org)
+- DEFAULT_ORGANIZATION_NAME: fallback org name when legacy fallback is enabled
+- DEFAULT_APP_USER_EMAIL: fallback user email when legacy fallback is enabled
+- DEFAULT_BOOTSTRAP_ROLE: role assigned during fallback membership bootstrap (default owner)
+- AUTH_JWT_ALGORITHM: JWT algorithm, ex HS256 (default HS256)
+- AUTH_JWT_SECRET: required for HS* JWT verification
+- AUTH_JWT_PUBLIC_KEY: required for RS*/ES* JWT verification (PEM, use \\n for newlines)
+- AUTH_JWT_ISSUER: optional expected issuer claim
+- AUTH_JWT_AUDIENCE: optional expected audience claim
+
+Production requirements:
+- NODE_ENV must be production
+- ALLOW_LEGACY_TENANT_FALLBACK must be false
+- JWT verification must be configured with either AUTH_JWT_SECRET (HS*) or AUTH_JWT_PUBLIC_KEY (non-HS)
 
 ## Scripts
 
