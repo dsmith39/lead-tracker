@@ -14,7 +14,16 @@ router.get('/', async (req, res) => {
 
     if (search) {
       const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      filter.$or = [{ name: regex }, { email: regex }, { company: regex }];
+      filter.$or = [
+        { name: regex },
+        { email: regex },
+        { company: regex },
+        { phone: regex },
+        { 'address.street': regex },
+        { 'address.city': regex },
+        { 'address.state': regex },
+        { 'address.postalCode': regex },
+      ];
     }
 
     const leads = await Lead.find(filter).sort({ createdAt: -1 });

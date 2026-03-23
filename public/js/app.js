@@ -19,6 +19,16 @@ const companyInput    = document.getElementById('input-company');
 const emailInput      = document.getElementById('input-email');
 const phoneInput      = document.getElementById('input-phone');
 const statusInput     = document.getElementById('input-status');
+const homeTypeInput   = document.getElementById('input-home-type');
+const knockCountInput = document.getElementById('input-knock-count');
+const lastVisitInput  = document.getElementById('input-last-visit');
+const streetInput     = document.getElementById('input-address-street');
+const cityInput       = document.getElementById('input-address-city');
+const stateInput      = document.getElementById('input-address-state');
+const postalInput     = document.getElementById('input-address-postal');
+const countryInput    = document.getElementById('input-address-country');
+const latInput        = document.getElementById('input-lat');
+const lngInput        = document.getElementById('input-lng');
 const notesInput      = document.getElementById('input-notes');
 const formError       = document.getElementById('form-error');
 
@@ -43,20 +53,49 @@ async function apiFetch(url, options = {}) {
 // ── Render ────────────────────────────────────────────────────────────────────
 function statusBadge(status) {
   const labels = {
-    'new':          'New',
-    'contacted':    'Contacted',
-    'qualified':    'Qualified',
-    'proposal':     'Proposal',
-    'closed-won':   'Closed Won',
-    'closed-lost':  'Closed Lost',
+    'not-visited':       'Not Visited',
+    'no-answer':         'No Answer',
+    'spoke-to-owner':    'Spoke To Owner',
+    'not-interested':    'Not Interested',
+    'callback-requested': 'Callback Requested',
+    'sale-closed':       'Sale Closed',
   };
   return `<span class="badge badge-${status}">${labels[status] ?? status}</span>`;
 }
 
 function formatDate(iso) {
+  if (!iso) return '—';
   return new Date(iso).toLocaleDateString(undefined, {
     year: 'numeric', month: 'short', day: 'numeric',
   });
+}
+
+function formatDateTime(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString();
+}
+
+function toDateTimeLocalValue(iso) {
+  if (!iso) return '';
+  const date = new Date(iso);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function addressLine(address = {}) {
+  const parts = [address.street, address.city, address.state, address.postalCode, address.country]
+    .filter(Boolean)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return parts.length ? parts.join(', ') : '—';
+}
+
+function formatHomeType(homeType) {
+  if (!homeType) return '—';
+  return homeType
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }
 
 function renderRow(lead) {
@@ -64,10 +103,14 @@ function renderRow(lead) {
   tr.dataset.id = lead._id;
   tr.innerHTML = `
     <td><strong>${escHtml(lead.name)}</strong></td>
+    <td>${escHtml(addressLine(lead.address))}</td>
+    <td>${escHtml(formatHomeType(lead.homeType))}</td>
     <td>${escHtml(lead.company || '—')}</td>
     <td>${lead.email ? `<a href="mailto:${escHtml(lead.email)}">${escHtml(lead.email)}</a>` : '—'}</td>
     <td>${escHtml(lead.phone || '—')}</td>
     <td>${statusBadge(lead.status)}</td>
+    <td>${lead.knockCount ?? 0}</td>
+    <td>${formatDateTime(lead.lastVisitAt)}</td>
     <td>${formatDate(lead.createdAt)}</td>
     <td>
       <div class="action-btns">
@@ -86,10 +129,10 @@ function renderStats(leads) {
 
   const items = [
     { label: 'Total',       value: leads.length },
-    { label: 'New',         value: counts['new'] || 0 },
-    { label: 'In Progress', value: (counts['contacted'] || 0) + (counts['qualified'] || 0) + (counts['proposal'] || 0) },
-    { label: 'Closed Won',  value: counts['closed-won'] || 0 },
-    { label: 'Closed Lost', value: counts['closed-lost'] || 0 },
+    { label: 'Not Visited', value: counts['not-visited'] || 0 },
+    { label: 'No Answer', value: counts['no-answer'] || 0 },
+    { label: 'Callback Requested', value: counts['callback-requested'] || 0 },
+    { label: 'Sale Closed', value: counts['sale-closed'] || 0 },
   ];
 
   statsBar.innerHTML = items
@@ -142,10 +185,23 @@ function openModal(lead = null) {
     emailInput.value      = lead.email || '';
     phoneInput.value      = lead.phone || '';
     statusInput.value     = lead.status;
+    homeTypeInput.value   = lead.homeType || 'other';
+    knockCountInput.value = lead.knockCount ?? 0;
+    lastVisitInput.value  = toDateTimeLocalValue(lead.lastVisitAt);
+    streetInput.value     = lead.address?.street || '';
+    cityInput.value       = lead.address?.city || '';
+    stateInput.value      = lead.address?.state || '';
+    postalInput.value     = lead.address?.postalCode || '';
+    countryInput.value    = lead.address?.country || '';
+    latInput.value        = lead.location?.lat ?? '';
+    lngInput.value        = lead.location?.lng ?? '';
     notesInput.value      = lead.notes || '';
   } else {
     modalTitle.textContent = 'Add Lead';
     leadIdInput.value = '';
+    homeTypeInput.value = 'other';
+    knockCountInput.value = '0';
+    lastVisitInput.value = '';
   }
 
   modalOverlay.classList.remove('hidden');
@@ -177,6 +233,20 @@ leadForm.addEventListener('submit', async (e) => {
     email:   emailInput.value.trim(),
     phone:   phoneInput.value.trim(),
     status:  statusInput.value,
+    homeType: homeTypeInput.value,
+    knockCount: Number(knockCountInput.value || 0),
+    lastVisitAt: lastVisitInput.value ? new Date(lastVisitInput.value).toISOString() : null,
+    address: {
+      street: streetInput.value.trim(),
+      city: cityInput.value.trim(),
+      state: stateInput.value.trim(),
+      postalCode: postalInput.value.trim(),
+      country: countryInput.value.trim(),
+    },
+    location: {
+      lat: latInput.value === '' ? null : Number(latInput.value),
+      lng: lngInput.value === '' ? null : Number(lngInput.value),
+    },
     notes:   notesInput.value.trim(),
   };
 

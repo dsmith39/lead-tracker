@@ -51,7 +51,7 @@ test('can add a new lead', async ({ page }) => {
   await page.fill('#input-company', 'Acme Corp');
   await page.fill('#input-email', 'alice@acme.com');
   await page.fill('#input-phone', '+1 555 111 2222');
-  await page.selectOption('#input-status', 'contacted');
+  await page.selectOption('#input-status', 'spoke-to-owner');
   await page.fill('#input-notes', 'Met at conference');
 
   await page.click('#lead-form button[type="submit"]');
@@ -62,7 +62,7 @@ test('can add a new lead', async ({ page }) => {
   // Row appears in table
   await expect(page.locator('tbody tr:not(#empty-row)')).toHaveCount(1);
   await expect(page.locator('tbody tr:not(#empty-row) td').first()).toContainText('Alice Johnson');
-  await expect(page.locator('.badge-contacted')).toBeVisible();
+  await expect(page.locator('.badge-spoke-to-owner')).toBeVisible();
 });
 
 test('shows validation error when name is empty', async ({ page }) => {
@@ -77,7 +77,7 @@ test('shows validation error when name is empty', async ({ page }) => {
 // ── Edit lead ─────────────────────────────────────────────────────────────────
 
 test('can edit an existing lead', async ({ page }) => {
-  await createLead({ name: 'Bob Smith', status: 'new' });
+  await createLead({ name: 'Bob Smith', status: 'not-visited' });
   await page.goto('/');
 
   await expect(page.locator('tbody tr:not(#empty-row)')).toHaveCount(1);
@@ -87,18 +87,18 @@ test('can edit an existing lead', async ({ page }) => {
   await expect(page.locator('#input-name')).toHaveValue('Bob Smith');
 
   await page.fill('#input-name', 'Robert Smith');
-  await page.selectOption('#input-status', 'qualified');
+  await page.selectOption('#input-status', 'callback-requested');
   await page.click('#lead-form button[type="submit"]');
 
   await expect(page.locator('#modal-overlay')).toBeHidden();
   await expect(page.locator('tbody tr:not(#empty-row) td').first()).toContainText('Robert Smith');
-  await expect(page.locator('.badge-qualified')).toBeVisible();
+  await expect(page.locator('.badge-callback-requested')).toBeVisible();
 });
 
 // ── Delete lead ───────────────────────────────────────────────────────────────
 
 test('can delete a lead via confirmation modal', async ({ page }) => {
-  await createLead({ name: 'Carol White', status: 'new' });
+  await createLead({ name: 'Carol White', status: 'not-visited' });
   await page.goto('/');
 
   await expect(page.locator('tbody tr:not(#empty-row)')).toHaveCount(1);
@@ -112,7 +112,7 @@ test('can delete a lead via confirmation modal', async ({ page }) => {
 });
 
 test('cancel on delete confirmation keeps the lead', async ({ page }) => {
-  await createLead({ name: 'Dave Brown', status: 'new' });
+  await createLead({ name: 'Dave Brown', status: 'not-visited' });
   await page.goto('/');
 
   await page.click('.btn-delete');
@@ -126,8 +126,8 @@ test('cancel on delete confirmation keeps the lead', async ({ page }) => {
 // ── Search ────────────────────────────────────────────────────────────────────
 
 test('search filters leads by name', async ({ page }) => {
-  await createLead({ name: 'Eve Adams', status: 'new' });
-  await createLead({ name: 'Frank Castle', status: 'new' });
+  await createLead({ name: 'Eve Adams', status: 'not-visited' });
+  await createLead({ name: 'Frank Castle', status: 'not-visited' });
   await page.goto('/');
 
   await expect(page.locator('tbody tr:not(#empty-row)')).toHaveCount(2);
@@ -139,7 +139,7 @@ test('search filters leads by name', async ({ page }) => {
 });
 
 test('search with no matches shows empty state', async ({ page }) => {
-  await createLead({ name: 'Grace Hopper', status: 'new' });
+  await createLead({ name: 'Grace Hopper', status: 'not-visited' });
   await page.goto('/');
 
   await page.fill('#search-input', 'ZZZnonexistent');
@@ -149,13 +149,13 @@ test('search with no matches shows empty state', async ({ page }) => {
 // ── Status filter ─────────────────────────────────────────────────────────────
 
 test('status filter shows only matching leads', async ({ page }) => {
-  await createLead({ name: 'Henry Ford', status: 'new' });
-  await createLead({ name: 'Ida Wells', status: 'closed-won' });
+  await createLead({ name: 'Henry Ford', status: 'not-visited' });
+  await createLead({ name: 'Ida Wells', status: 'sale-closed' });
   await page.goto('/');
 
   await expect(page.locator('tbody tr:not(#empty-row)')).toHaveCount(2);
 
-  await page.selectOption('#status-filter', 'closed-won');
+  await page.selectOption('#status-filter', 'sale-closed');
   await expect(page.locator('tbody tr:not(#empty-row)')).toHaveCount(1);
   await expect(page.locator('tbody')).toContainText('Ida Wells');
   await expect(page.locator('tbody')).not.toContainText('Henry Ford');
@@ -164,16 +164,16 @@ test('status filter shows only matching leads', async ({ page }) => {
 // ── Stats bar ─────────────────────────────────────────────────────────────────
 
 test('stats bar reflects correct counts', async ({ page }) => {
-  await createLead({ name: 'Jack Ma', status: 'new' });
-  await createLead({ name: 'Karen Page', status: 'closed-won' });
-  await createLead({ name: 'Leo Messi', status: 'proposal' });
+  await createLead({ name: 'Jack Ma', status: 'not-visited' });
+  await createLead({ name: 'Karen Page', status: 'sale-closed' });
+  await createLead({ name: 'Leo Messi', status: 'callback-requested' });
   await page.goto('/');
 
   const pills = page.locator('.stat-pill');
   await expect(pills.filter({ hasText: 'Total' })).toContainText('3');
-  await expect(pills.filter({ hasText: 'New' })).toContainText('1');
-  await expect(pills.filter({ hasText: 'Closed Won' })).toContainText('1');
-  await expect(pills.filter({ hasText: 'In Progress' })).toContainText('1');
+  await expect(pills.filter({ hasText: 'Not Visited' })).toContainText('1');
+  await expect(pills.filter({ hasText: 'Sale Closed' })).toContainText('1');
+  await expect(pills.filter({ hasText: 'Callback Requested' })).toContainText('1');
 });
 
 // ── Modal close behaviours ────────────────────────────────────────────────────

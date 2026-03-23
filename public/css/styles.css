@@ -124,12 +124,12 @@ tbody td { padding: 0.85rem 1rem; vertical-align: middle; }
   text-transform: capitalize;
   white-space: nowrap;
 }
-.badge-new          { background: #eff6ff; color: #1d4ed8; }
-.badge-contacted    { background: #fef9c3; color: #92400e; }
-.badge-qualified    { background: #ecfdf5; color: #065f46; }
-.badge-proposal     { background: #f5f3ff; color: #5b21b6; }
-.badge-closed-won   { background: #d1fae5; color: #065f46; }
-.badge-closed-lost  { background: #fee2e2; color: #991b1b; }
+.badge-not-visited       { background: #e0f2fe; color: #0c4a6e; }
+.badge-no-answer         { background: #fef3c7; color: #92400e; }
+.badge-spoke-to-owner    { background: #dcfce7; color: #166534; }
+.badge-not-interested    { background: #fee2e2; color: #991b1b; }
+.badge-callback-requested { background: #ede9fe; color: #5b21b6; }
+.badge-sale-closed       { background: #bbf7d0; color: #14532d; }
 
 /* ── Action buttons ──────────────────────────────── */
 .action-btns { display: flex; gap: 0.5rem; }

@@ -21,17 +21,17 @@
       <input
         type="text"
         id="search-input"
-        placeholder="Search by name, email, or company…"
+        placeholder="Search by name, address, email, phone, or company…"
         autocomplete="off"
       />
       <select id="status-filter">
         <option value="all">All Statuses</option>
-        <option value="new">New</option>
-        <option value="contacted">Contacted</option>
-        <option value="qualified">Qualified</option>
-        <option value="proposal">Proposal</option>
-        <option value="closed-won">Closed Won</option>
-        <option value="closed-lost">Closed Lost</option>
+        <option value="not-visited">Not Visited</option>
+        <option value="no-answer">No Answer</option>
+        <option value="spoke-to-owner">Spoke To Owner</option>
+        <option value="not-interested">Not Interested</option>
+        <option value="callback-requested">Callback Requested</option>
+        <option value="sale-closed">Sale Closed</option>
       </select>
     </div>
 
@@ -44,17 +44,21 @@
         <thead>
           <tr>
             <th>Name</th>
+            <th>Address</th>
+            <th>Home Type</th>
             <th>Company</th>
             <th>Email</th>
             <th>Phone</th>
-            <th>Status</th>
+            <th>Visit Status</th>
+            <th>Knocks</th>
+            <th>Last Visit</th>
             <th>Added</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody id="leads-table-body">
           <tr id="empty-row">
-            <td colspan="7" class="empty-message">No leads found.</td>
+            <td colspan="11" class="empty-message">No leads found.</td>
           </tr>
         </tbody>
       </table>
@@ -96,13 +100,71 @@
           <div class="form-group">
             <label for="input-status">Status</label>
             <select id="input-status">
-              <option value="new">New</option>
-              <option value="contacted">Contacted</option>
-              <option value="qualified">Qualified</option>
-              <option value="proposal">Proposal</option>
-              <option value="closed-won">Closed Won</option>
-              <option value="closed-lost">Closed Lost</option>
+              <option value="not-visited">Not Visited</option>
+              <option value="no-answer">No Answer</option>
+              <option value="spoke-to-owner">Spoke To Owner</option>
+              <option value="not-interested">Not Interested</option>
+              <option value="callback-requested">Callback Requested</option>
+              <option value="sale-closed">Sale Closed</option>
             </select>
+          </div>
+
+          <div class="form-group">
+            <label for="input-home-type">Home Type</label>
+            <select id="input-home-type">
+              <option value="single-family">Single Family</option>
+              <option value="multi-family">Multi Family</option>
+              <option value="townhome">Townhome</option>
+              <option value="apartment">Apartment</option>
+              <option value="condo">Condo</option>
+              <option value="mobile-home">Mobile Home</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="input-knock-count">Knock Count</label>
+            <input type="number" id="input-knock-count" min="0" step="1" placeholder="0" />
+          </div>
+
+          <div class="form-group">
+            <label for="input-last-visit">Last Visit</label>
+            <input type="datetime-local" id="input-last-visit" />
+          </div>
+
+          <div class="form-group">
+            <label for="input-address-street">Street</label>
+            <input type="text" id="input-address-street" placeholder="123 Main St" />
+          </div>
+
+          <div class="form-group">
+            <label for="input-address-city">City</label>
+            <input type="text" id="input-address-city" placeholder="Springfield" />
+          </div>
+
+          <div class="form-group">
+            <label for="input-address-state">State</label>
+            <input type="text" id="input-address-state" placeholder="IL" />
+          </div>
+
+          <div class="form-group">
+            <label for="input-address-postal">Postal Code</label>
+            <input type="text" id="input-address-postal" placeholder="62701" />
+          </div>
+
+          <div class="form-group">
+            <label for="input-address-country">Country</label>
+            <input type="text" id="input-address-country" placeholder="USA" />
+          </div>
+
+          <div class="form-group">
+            <label for="input-lat">Latitude</label>
+            <input type="number" id="input-lat" step="any" placeholder="39.7817" />
+          </div>
+
+          <div class="form-group">
+            <label for="input-lng">Longitude</label>
+            <input type="number" id="input-lng" step="any" placeholder="-89.6501" />
           </div>
         </div>
 
