@@ -65,6 +65,77 @@ test('can add a new lead', async ({ page }) => {
   await expect(page.locator('.badge-spoke-to-owner')).toBeVisible();
 });
 
+test('planner groups leads by turf and can assign a lead to a rep route', async ({ page }) => {
+  await createLead({
+    name: 'ZIP Turf Lead',
+    status: 'not-visited',
+    address: { street: '10 Oak St', city: 'Springfield', state: 'IL', postalCode: '62701', country: 'USA' },
+    turf: { type: 'zip' },
+  });
+  await createLead({
+    name: 'Neighborhood Turf Lead',
+    status: 'not-visited',
+    address: { street: '25 Pine St', city: 'Springfield', state: 'IL', postalCode: '62704', country: 'USA' },
+    turf: { type: 'neighborhood', label: 'Downtown' },
+  });
+
+  await page.goto('/');
+
+  await expect(page.locator('.turf-group-card').filter({ hasText: 'ZIP: 62701' })).toBeVisible();
+  await expect(page.locator('.turf-group-card').filter({ hasText: 'Neighborhood: Downtown' })).toBeVisible();
+
+  await page.fill('#route-rep-input', 'Avery');
+  await page.fill('#route-date-input', '2026-03-25');
+
+  const zipGroup = page.locator('.turf-group-card').filter({ hasText: 'ZIP: 62701' });
+  await zipGroup.getByRole('button', { name: 'Add to Route' }).click();
+
+  await expect(page.locator('#route-plan-summary')).toContainText('1 stop for Avery on 2026-03-25');
+  await expect(page.locator('.route-stop-name').first()).toContainText('ZIP Turf Lead');
+  await expect(page.locator('tbody')).toContainText('Avery');
+  await expect(page.locator('tbody')).toContainText('Stop 1');
+});
+
+test('planner manual ordering persists when route stops are moved', async ({ page }) => {
+  await createLead({
+    name: 'First Route Stop',
+    status: 'not-visited',
+    assignedRep: 'Taylor',
+    routePlan: { date: '2026-03-26', order: 1 },
+    address: { street: '100 First Ave', city: 'Denver', state: 'CO', postalCode: '80202', country: 'USA' },
+    turf: { type: 'zip' },
+  });
+  await createLead({
+    name: 'Second Route Stop',
+    status: 'not-visited',
+    assignedRep: 'Taylor',
+    routePlan: { date: '2026-03-26', order: 2 },
+    address: { street: '200 Second Ave', city: 'Denver', state: 'CO', postalCode: '80202', country: 'USA' },
+    turf: { type: 'zip' },
+  });
+
+  await page.goto('/');
+  await page.fill('#route-rep-input', 'Taylor');
+  await page.fill('#route-date-input', '2026-03-26');
+
+  const routeStops = page.locator('.route-stop-name');
+  await expect(routeStops.nth(0)).toContainText('First Route Stop');
+  await expect(routeStops.nth(1)).toContainText('Second Route Stop');
+
+  await page.locator('[data-route-move-down-id]').first().click();
+
+  await expect(routeStops.nth(0)).toContainText('Second Route Stop');
+  await expect(routeStops.nth(1)).toContainText('First Route Stop');
+
+  await page.reload();
+  await page.fill('#route-rep-input', 'Taylor');
+  await page.fill('#route-date-input', '2026-03-26');
+
+  const reloadedStops = page.locator('.route-stop-name');
+  await expect(reloadedStops.nth(0)).toContainText('Second Route Stop');
+  await expect(reloadedStops.nth(1)).toContainText('First Route Stop');
+});
+
 test('clicking the map in browse mode does not open the add modal', async ({ page }) => {
   await page.goto('/');
 

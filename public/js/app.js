@@ -11,6 +11,12 @@ const emptyRow        = document.getElementById('empty-row');
 const statsBar        = document.getElementById('stats-bar');
 const searchInput     = document.getElementById('search-input');
 const statusFilter    = document.getElementById('status-filter');
+const plannerRepInput = document.getElementById('route-rep-input');
+const plannerDateInput = document.getElementById('route-date-input');
+const turfGroupsSummary = document.getElementById('turf-groups-summary');
+const turfGroupsList = document.getElementById('turf-groups-list');
+const routePlanSummary = document.getElementById('route-plan-summary');
+const routeStopsList = document.getElementById('route-stops-list');
 const mapSearchForm   = document.getElementById('map-search-form');
 const mapSearchInput  = document.getElementById('map-search-input');
 const currentLocationButton = document.getElementById('btn-current-location');
@@ -28,6 +34,10 @@ const emailInput      = document.getElementById('input-email');
 const phoneInput      = document.getElementById('input-phone');
 const statusInput     = document.getElementById('input-status');
 const homeTypeInput   = document.getElementById('input-home-type');
+const turfTypeInput   = document.getElementById('input-turf-type');
+const turfLabelInput  = document.getElementById('input-turf-label');
+const assignedRepInput = document.getElementById('input-assigned-rep');
+const routeDateFieldInput = document.getElementById('input-route-date');
 const knockCountInput = document.getElementById('input-knock-count');
 const lastVisitInput  = document.getElementById('input-last-visit');
 const streetInput     = document.getElementById('input-address-street');
@@ -65,6 +75,7 @@ let searchMarker = null;
 let locatingUser = false;
 let visitHistory = [];
 let leadDetailsEditable = true;
+let editingRouteSnapshot = { rep: '', date: '', order: null };
 
 // ── Fetch helpers ─────────────────────────────────────────────────────────────
 async function apiFetch(url, options = {}) {
@@ -123,6 +134,217 @@ function formatHomeType(homeType) {
     .split('-')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+}
+
+function formatTurfType(type) {
+  const labels = {
+    neighborhood: 'Neighborhood',
+    zip: 'ZIP',
+    grid: 'Grid',
+  };
+
+  return labels[type] || 'Turf';
+}
+
+function buildGridLabel(lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return '';
+  }
+
+  const latBucket = Math.floor((lat + 90) / 0.02);
+  const lngBucket = Math.floor((lng + 180) / 0.02);
+  return `Grid ${latBucket}-${lngBucket}`;
+}
+
+function turfLabel(lead) {
+  const explicitLabel = String(lead?.turf?.label || '').trim();
+  if (explicitLabel) {
+    return explicitLabel;
+  }
+
+  const turfType = lead?.turf?.type || 'zip';
+  if (turfType === 'zip') {
+    return String(lead?.address?.postalCode || '').trim();
+  }
+
+  if (turfType === 'neighborhood') {
+    return String(lead?.address?.city || '').trim();
+  }
+
+  return buildGridLabel(lead?.location?.lat, lead?.location?.lng);
+}
+
+function formatTurfArea(lead) {
+  const label = turfLabel(lead);
+  if (!label) {
+    return 'Unassigned Turf';
+  }
+
+  return `${formatTurfType(lead?.turf?.type || 'zip')}: ${label}`;
+}
+
+function formatRoutePlan(lead) {
+  const assignedRep = String(lead?.assignedRep || '').trim();
+  const routeDate = lead?.routePlan?.date || '';
+  const routeOrder = lead?.routePlan?.order;
+
+  if (!assignedRep || !routeDate) {
+    return '—';
+  }
+
+  return `
+    <div class="route-plan-cell">
+      <strong>${escHtml(assignedRep)}</strong>
+      <div>${escHtml(routeDate)}</div>
+      <div>${escHtml(Number.isInteger(routeOrder) ? `Stop ${routeOrder}` : 'Unordered')}</div>
+    </div>`;
+}
+
+function selectedPlannerRep() {
+  return plannerRepInput.value.trim();
+}
+
+function selectedPlannerDate() {
+  return plannerDateInput.value;
+}
+
+function hasPlannerSelection() {
+  return Boolean(selectedPlannerRep() && selectedPlannerDate());
+}
+
+function isLeadOnSelectedRoute(lead) {
+  return Boolean(
+    selectedPlannerRep()
+    && selectedPlannerDate()
+    && lead.assignedRep === selectedPlannerRep()
+    && lead.routePlan?.date === selectedPlannerDate()
+  );
+}
+
+function routeStopsForSelection(leads) {
+  return leads
+    .filter(isLeadOnSelectedRoute)
+    .sort((left, right) => {
+      const leftOrder = Number.isInteger(left.routePlan?.order) ? left.routePlan.order : Number.MAX_SAFE_INTEGER;
+      const rightOrder = Number.isInteger(right.routePlan?.order) ? right.routePlan.order : Number.MAX_SAFE_INTEGER;
+
+      if (leftOrder !== rightOrder) {
+        return leftOrder - rightOrder;
+      }
+
+      return String(left.name || '').localeCompare(String(right.name || ''));
+    });
+}
+
+function groupedTurfAreas(leads) {
+  const groups = new Map();
+
+  leads.forEach((lead) => {
+    const type = lead?.turf?.type || 'zip';
+    const label = turfLabel(lead) || 'Unassigned Turf';
+    const key = `${type}:${label}`;
+
+    if (!groups.has(key)) {
+      groups.set(key, {
+        type,
+        label,
+        leads: [],
+      });
+    }
+
+    groups.get(key).leads.push(lead);
+  });
+
+  return Array.from(groups.values())
+    .sort((left, right) => left.label.localeCompare(right.label))
+    .map((group) => ({
+      ...group,
+      leads: group.leads.sort((left, right) => String(left.name || '').localeCompare(String(right.name || ''))),
+    }));
+}
+
+function renderRoutePlanner(leads) {
+  const turfGroups = groupedTurfAreas(leads);
+  turfGroupsSummary.textContent = turfGroups.length
+    ? `${turfGroups.length} turf areas across ${leads.length} visible leads.`
+    : 'No visible leads to group right now.';
+
+  turfGroupsList.innerHTML = '';
+  if (!turfGroups.length) {
+    turfGroupsList.innerHTML = '<p class="planner-empty-state">No leads match the current filters.</p>';
+  } else {
+    turfGroups.forEach((group) => {
+      const card = document.createElement('article');
+      card.className = 'turf-group-card';
+      card.innerHTML = `
+        <div class="turf-group-header">
+          <div>
+            <div class="turf-group-title">${escHtml(`${formatTurfType(group.type)}: ${group.label}`)}</div>
+            <div class="turf-group-meta">${group.leads.length} lead${group.leads.length === 1 ? '' : 's'}</div>
+          </div>
+        </div>
+        <ul class="planner-lead-list">
+          ${group.leads.map((lead) => {
+            const routeAction = !hasPlannerSelection()
+              ? '<button type="button" class="btn btn-secondary" disabled>Set rep/date</button>'
+              : isLeadOnSelectedRoute(lead)
+                ? `<button type="button" class="btn btn-secondary" data-route-remove-id="${lead._id}">Remove</button>`
+                : `<button type="button" class="btn btn-primary" data-route-add-id="${lead._id}">Add to Route</button>`;
+
+            return `
+              <li class="planner-lead-row">
+                <div>
+                  <div class="planner-lead-name">${escHtml(lead.name || 'Unnamed Lead')}</div>
+                  <div class="planner-lead-meta">${escHtml(addressLine(lead.address))}</div>
+                  <div class="planner-lead-meta">${escHtml(formatRoutePlan(lead).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() || 'Not on a route yet')}</div>
+                </div>
+                <div class="planner-inline-actions">${routeAction}</div>
+              </li>`;
+          }).join('')}
+        </ul>`;
+      turfGroupsList.appendChild(card);
+    });
+  }
+
+  const repName = selectedPlannerRep();
+  const routeDate = selectedPlannerDate();
+  const routeStops = routeStopsForSelection(leads);
+
+  routeStopsList.innerHTML = '';
+
+  if (!hasPlannerSelection()) {
+    routePlanSummary.textContent = 'Set a rep and date, then add stops from the turf groups.';
+    routeStopsList.innerHTML = '<li class="planner-empty-state">Manual ordering is enabled once a rep and route date are selected.</li>';
+    return;
+  }
+
+  routePlanSummary.textContent = routeStops.length
+    ? `${routeStops.length} stop${routeStops.length === 1 ? '' : 's'} for ${repName} on ${routeDate}.`
+    : `No stops assigned to ${repName} on ${routeDate} yet.`;
+
+  if (!routeStops.length) {
+    routeStopsList.innerHTML = '<li class="planner-empty-state">Add leads from the turf groups to build this rep\'s day.</li>';
+    return;
+  }
+
+  routeStops.forEach((lead, index) => {
+    const item = document.createElement('li');
+    item.className = 'route-stop-card';
+    item.innerHTML = `
+      <div class="route-stop-header">
+        <div>
+          <div class="route-stop-title route-stop-name">${escHtml(lead.name || 'Unnamed Lead')}</div>
+          <div class="route-stop-meta">${escHtml(addressLine(lead.address))}</div>
+          <div class="route-stop-meta">${escHtml(formatTurfArea(lead))}</div>
+        </div>
+      </div>
+      <div class="route-stop-actions">
+        <button type="button" class="btn btn-secondary btn-route-move" data-route-move-up-id="${lead._id}" ${index === 0 ? 'disabled' : ''}>Up</button>
+        <button type="button" class="btn btn-secondary btn-route-move" data-route-move-down-id="${lead._id}" ${index === routeStops.length - 1 ? 'disabled' : ''}>Down</button>
+        <button type="button" class="btn btn-secondary" data-route-remove-id="${lead._id}">Remove</button>
+      </div>`;
+    routeStopsList.appendChild(item);
+  });
 }
 
 function hasCoordinates(lead) {
@@ -289,6 +511,10 @@ function leadDetailControls() {
     phoneInput,
     statusInput,
     homeTypeInput,
+    turfTypeInput,
+    turfLabelInput,
+    assignedRepInput,
+    routeDateFieldInput,
     knockCountInput,
     lastVisitInput,
     streetInput,
@@ -300,6 +526,30 @@ function leadDetailControls() {
     lngInput,
     notesInput,
   ];
+}
+
+async function updateLeadRouteAssignment(leadId, assignedRep, routeDate, routeOrder = null) {
+  await apiFetch(`${API}/${leadId}/route-plan`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      assignedRep,
+      routeDate,
+      routeOrder,
+    }),
+  });
+  await loadLeads();
+}
+
+async function savePlannerRouteOrder(orderedLeadIds) {
+  await apiFetch(`${API}/route-plan/reorder`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      assignedRep: selectedPlannerRep(),
+      routeDate: selectedPlannerDate(),
+      orderedLeadIds,
+    }),
+  });
+  await loadLeads();
 }
 
 function setLeadDetailsEditable(enabled, isExistingLead) {
@@ -445,6 +695,8 @@ function renderRow(lead) {
   tr.innerHTML = `
     <td><strong>${escHtml(lead.name)}</strong></td>
     <td>${addressCell}</td>
+    <td>${escHtml(formatTurfArea(lead))}</td>
+    <td>${formatRoutePlan(lead)}</td>
     <td>${escHtml(formatHomeType(lead.homeType))}</td>
     <td>${escHtml(lead.company || '—')}</td>
     <td>${lead.email ? `<a href="mailto:${escHtml(lead.email)}">${escHtml(lead.email)}</a>` : '—'}</td>
@@ -467,9 +719,13 @@ function renderStats(leads) {
     acc[l.status] = (acc[l.status] || 0) + 1;
     return acc;
   }, {});
+  const routedCount = leads.filter((lead) => String(lead.assignedRep || '').trim() && lead.routePlan?.date).length;
+  const turfCount = groupedTurfAreas(leads).length;
 
   const items = [
     { label: 'Total',       value: leads.length },
+    { label: 'Turf Areas', value: turfCount },
+    { label: 'On Route', value: routedCount },
     { label: 'Not Visited', value: counts['not-visited'] || 0 },
     { label: 'No Answer', value: counts['no-answer'] || 0 },
     { label: 'Callback Requested', value: counts['callback-requested'] || 0 },
@@ -512,6 +768,7 @@ async function loadLeads() {
   }
 
   renderStats(leads);
+  renderRoutePlanner(leads);
   renderMapMarkers(leads);
 
   if (search || status !== 'all') {
@@ -523,6 +780,8 @@ async function loadLeads() {
 function openModal(lead = null) {
   leadForm.reset();
   hideFormError();
+  const defaultPlannerRep = selectedPlannerRep();
+  const defaultPlannerDate = selectedPlannerDate();
 
   if (lead) {
     const isEditing = Boolean(lead._id);
@@ -534,6 +793,10 @@ function openModal(lead = null) {
     phoneInput.value      = lead.phone || '';
     statusInput.value     = lead.status || 'not-visited';
     homeTypeInput.value   = lead.homeType || 'other';
+    turfTypeInput.value   = lead.turf?.type || 'zip';
+    turfLabelInput.value  = turfLabel(lead);
+    assignedRepInput.value = lead.assignedRep || (isEditing ? '' : defaultPlannerRep);
+    routeDateFieldInput.value = lead.routePlan?.date || ((lead.assignedRep || defaultPlannerRep) ? defaultPlannerDate : '');
     knockCountInput.value = lead.knockCount ?? 0;
     lastVisitInput.value  = toDateTimeLocalValue(lead.lastVisitAt);
     streetInput.value     = lead.address?.street || '';
@@ -548,6 +811,11 @@ function openModal(lead = null) {
     setVisitSectionMode(isEditing);
     setLeadDetailsEditable(!isEditing, isEditing);
     hideVisitFormError();
+    editingRouteSnapshot = {
+      rep: lead.assignedRep || '',
+      date: lead.routePlan?.date || '',
+      order: Number.isInteger(lead.routePlan?.order) ? lead.routePlan.order : null,
+    };
     if (isEditing) {
       loadVisitHistory(lead._id).catch(() => {
         visitHistory = [];
@@ -558,12 +826,17 @@ function openModal(lead = null) {
     modalTitle.textContent = 'Add Lead';
     leadIdInput.value = '';
     homeTypeInput.value = 'other';
+    turfTypeInput.value = 'zip';
+    turfLabelInput.value = '';
+    assignedRepInput.value = defaultPlannerRep;
+    routeDateFieldInput.value = defaultPlannerRep ? defaultPlannerDate : '';
     knockCountInput.value = '0';
     lastVisitInput.value = '';
     updateMapSelectionStatus(Number.NaN, Number.NaN);
     setVisitSectionMode(false);
     setLeadDetailsEditable(true, false);
     hideVisitFormError();
+    editingRouteSnapshot = { rep: '', date: '', order: null };
   }
 
   modalOverlay.classList.remove('hidden');
@@ -594,6 +867,17 @@ leadForm.addEventListener('submit', async (e) => {
     return;
   }
 
+  if ((assignedRepInput.value.trim() && !routeDateFieldInput.value) || (!assignedRepInput.value.trim() && routeDateFieldInput.value)) {
+    showFormError('Assigned rep and route date must both be set together.');
+    return;
+  }
+
+  const nextAssignedRep = assignedRepInput.value.trim();
+  const nextRouteDate = routeDateFieldInput.value || '';
+  const preservedRouteOrder = nextAssignedRep === editingRouteSnapshot.rep && nextRouteDate === editingRouteSnapshot.date
+    ? editingRouteSnapshot.order
+    : null;
+
   const payload = {
     name:    nameInput.value.trim(),
     company: companyInput.value.trim(),
@@ -601,6 +885,15 @@ leadForm.addEventListener('submit', async (e) => {
     phone:   phoneInput.value.trim(),
     status:  statusInput.value,
     homeType: homeTypeInput.value,
+    turf: {
+      type: turfTypeInput.value,
+      label: turfLabelInput.value.trim(),
+    },
+    assignedRep: nextAssignedRep,
+    routePlan: {
+      date: nextRouteDate || null,
+      order: preservedRouteOrder,
+    },
     knockCount: Number(knockCountInput.value || 0),
     lastVisitAt: lastVisitInput.value ? new Date(lastVisitInput.value).toISOString() : null,
     address: {
@@ -726,6 +1019,52 @@ document.addEventListener('click', async (e) => {
   visitOutcomeInput.focus();
 });
 
+turfGroupsList.addEventListener('click', async (e) => {
+  const addButton = e.target.closest('[data-route-add-id]');
+  const removeButton = e.target.closest('[data-route-remove-id]');
+
+  if (!addButton && !removeButton) {
+    return;
+  }
+
+  if (addButton) {
+    await updateLeadRouteAssignment(addButton.dataset.routeAddId, selectedPlannerRep(), selectedPlannerDate(), null);
+    return;
+  }
+
+  await updateLeadRouteAssignment(removeButton.dataset.routeRemoveId, '', '', null);
+});
+
+routeStopsList.addEventListener('click', async (e) => {
+  const moveUpButton = e.target.closest('[data-route-move-up-id]');
+  const moveDownButton = e.target.closest('[data-route-move-down-id]');
+  const removeButton = e.target.closest('[data-route-remove-id]');
+
+  if (removeButton) {
+    await updateLeadRouteAssignment(removeButton.dataset.routeRemoveId, '', '', null);
+    return;
+  }
+
+  const routeStops = routeStopsForSelection(leadsCache);
+
+  if (moveUpButton) {
+    const currentIndex = routeStops.findIndex((lead) => lead._id === moveUpButton.dataset.routeMoveUpId);
+    if (currentIndex > 0) {
+      [routeStops[currentIndex - 1], routeStops[currentIndex]] = [routeStops[currentIndex], routeStops[currentIndex - 1]];
+      await savePlannerRouteOrder(routeStops.map((lead) => lead._id));
+    }
+    return;
+  }
+
+  if (moveDownButton) {
+    const currentIndex = routeStops.findIndex((lead) => lead._id === moveDownButton.dataset.routeMoveDownId);
+    if (currentIndex > -1 && currentIndex < routeStops.length - 1) {
+      [routeStops[currentIndex], routeStops[currentIndex + 1]] = [routeStops[currentIndex + 1], routeStops[currentIndex]];
+      await savePlannerRouteOrder(routeStops.map((lead) => lead._id));
+    }
+  }
+});
+
 // ── Toolbar event listeners ───────────────────────────────────────────────────
 searchInput.addEventListener('input', () => {
   clearTimeout(debounceTimer);
@@ -733,6 +1072,8 @@ searchInput.addEventListener('input', () => {
 });
 
 statusFilter.addEventListener('change', loadLeads);
+plannerRepInput.addEventListener('input', () => renderRoutePlanner(leadsCache));
+plannerDateInput.addEventListener('change', () => renderRoutePlanner(leadsCache));
 latInput.addEventListener('input', () => updateMapSelectionStatus(getCoordinateInputValue(latInput), getCoordinateInputValue(lngInput)));
 lngInput.addEventListener('input', () => updateMapSelectionStatus(getCoordinateInputValue(latInput), getCoordinateInputValue(lngInput)));
 mapAddModeButton.addEventListener('click', () => {
@@ -805,6 +1146,7 @@ modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) c
 confirmOverlay.addEventListener('click', (e) => { if (e.target === confirmOverlay) closeConfirm(); });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
+plannerDateInput.value = new Date().toISOString().slice(0, 10);
 initializeMap();
 syncMapAddModeUi();
 loadLeads();

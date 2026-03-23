@@ -39,6 +39,36 @@
     <!-- Stats bar -->
     <div class="stats" id="stats-bar"></div>
 
+    <section class="planner-panel">
+      <div class="planner-panel-header">
+        <div>
+          <h2>Territory &amp; Route Planner</h2>
+          <p>Group leads into turf areas by neighborhood, ZIP, or grid, then build a simple daily stop order for each rep.</p>
+        </div>
+        <div class="planner-controls">
+          <input type="text" id="route-rep-input" placeholder="Rep name for today&#39;s route" autocomplete="off" />
+          <input type="date" id="route-date-input" />
+        </div>
+      </div>
+      <div class="planner-grid">
+        <section class="planner-column" aria-labelledby="turf-groups-heading">
+          <div class="planner-subheader">
+            <h3 id="turf-groups-heading">Turf Groups</h3>
+            <p id="turf-groups-summary">Leads are grouped automatically by each lead&#39;s turf area.</p>
+          </div>
+          <div id="turf-groups-list" class="turf-groups-list"></div>
+        </section>
+
+        <section class="planner-column" aria-labelledby="route-plan-heading">
+          <div class="planner-subheader">
+            <h3 id="route-plan-heading">Daily Route</h3>
+            <p id="route-plan-summary">Set a rep and date, then add stops from the turf groups.</p>
+          </div>
+          <ol id="route-stops-list" class="route-stops-list"></ol>
+        </section>
+      </div>
+    </section>
+
     <section class="map-panel">
       <div class="map-panel-header">
         <div>
@@ -81,6 +111,8 @@
           <tr>
             <th>Name</th>
             <th>Address</th>
+            <th>Turf</th>
+            <th>Rep Route</th>
             <th>Home Type</th>
             <th>Company</th>
             <th>Email</th>
@@ -94,7 +126,7 @@
         </thead>
         <tbody id="leads-table-body">
           <tr id="empty-row">
-            <td colspan="11" class="empty-message">No leads found.</td>
+            <td colspan="13" class="empty-message">No leads found.</td>
           </tr>
         </tbody>
       </table>
@@ -156,6 +188,30 @@
               <option value="mobile-home">Mobile Home</option>
               <option value="other">Other</option>
             </select>
+          </div>
+
+          <div class="form-group">
+            <label for="input-turf-type">Turf Type</label>
+            <select id="input-turf-type">
+              <option value="zip">ZIP</option>
+              <option value="neighborhood">Neighborhood</option>
+              <option value="grid">Grid</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="input-turf-label">Turf Label</label>
+            <input type="text" id="input-turf-label" placeholder="Leave blank to derive automatically" />
+          </div>
+
+          <div class="form-group">
+            <label for="input-assigned-rep">Assigned Rep</label>
+            <input type="text" id="input-assigned-rep" placeholder="Jordan, Sam, Taylor..." />
+          </div>
+
+          <div class="form-group">
+            <label for="input-route-date">Route Date</label>
+            <input type="date" id="input-route-date" />
           </div>
 
           <div class="form-group">

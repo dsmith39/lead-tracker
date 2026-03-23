@@ -57,6 +57,34 @@ const leadSchema = new mongoose.Schema(
       enum: ['single-family', 'multi-family', 'townhome', 'apartment', 'condo', 'mobile-home', 'other'],
       default: 'other',
     },
+    turf: {
+      type: {
+        type: String,
+        enum: ['neighborhood', 'zip', 'grid'],
+        default: 'zip',
+      },
+      label: {
+        type: String,
+        trim: true,
+      },
+    },
+    assignedRep: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    routePlan: {
+      date: {
+        type: String,
+        match: [/^\d{4}-\d{2}-\d{2}$/, 'Route date must be in YYYY-MM-DD format'],
+        default: null,
+      },
+      order: {
+        type: Number,
+        min: 1,
+        default: null,
+      },
+    },
     status: {
       type: String,
       enum: ['not-visited', 'no-answer', 'spoke-to-owner', 'not-interested', 'callback-requested', 'sale-closed'],

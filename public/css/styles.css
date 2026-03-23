@@ -88,6 +88,178 @@ main {
 }
 .stat-pill strong { color: var(--clr-text); }
 
+/* ── Planner panel ───────────────────────────────── */
+.planner-panel {
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.planner-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.planner-panel-header h2 {
+  font-size: 1.05rem;
+  margin-bottom: 0.2rem;
+}
+
+.planner-panel-header p,
+.planner-subheader p,
+.planner-empty-state {
+  color: var(--clr-muted);
+  font-size: 0.88rem;
+}
+
+.planner-controls {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.planner-controls input {
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  min-width: 200px;
+}
+
+.planner-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.planner-column {
+  border: 1px solid var(--clr-border);
+  border-radius: calc(var(--radius) - 2px);
+  background: #fbfdff;
+  padding: 0.9rem;
+}
+
+.planner-subheader {
+  margin-bottom: 0.75rem;
+}
+
+.planner-subheader h3 {
+  font-size: 0.95rem;
+  margin-bottom: 0.2rem;
+}
+
+.turf-groups-list,
+.route-stops-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.route-stops-list {
+  list-style: none;
+  counter-reset: route-stop;
+}
+
+.turf-group-card,
+.route-stop-card {
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius);
+  background: #ffffff;
+  padding: 0.8rem;
+}
+
+.turf-group-header,
+.route-stop-header,
+.planner-lead-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.turf-group-title,
+.route-stop-title {
+  font-weight: 700;
+  color: var(--clr-text);
+}
+
+.turf-group-meta,
+.planner-lead-meta,
+.route-stop-meta,
+.route-plan-cell {
+  color: var(--clr-muted);
+  font-size: 0.82rem;
+}
+
+.planner-lead-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+}
+
+.planner-lead-row {
+  padding-top: 0.55rem;
+  border-top: 1px solid #eef2f7;
+}
+
+.planner-lead-row:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.planner-lead-name,
+.route-stop-name {
+  font-weight: 600;
+  margin-bottom: 0.15rem;
+}
+
+.planner-inline-actions,
+.route-stop-actions {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.btn-route-move {
+  min-width: 2.5rem;
+}
+
+.route-stop-card {
+  position: relative;
+  padding-left: 3.2rem;
+}
+
+.route-stop-card::before {
+  counter-increment: route-stop;
+  content: counter(route-stop);
+  position: absolute;
+  left: 0.9rem;
+  top: 0.95rem;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  background: #dbeafe;
+  color: #1d4ed8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.route-stop-actions {
+  margin-top: 0.65rem;
+}
+
 /* ── Map panel ───────────────────────────────────── */
 .map-panel {
   background: linear-gradient(135deg, #ffffff 0%, #eef4ff 100%);
@@ -324,6 +496,12 @@ tbody td { padding: 0.85rem 1rem; vertical-align: middle; }
   color: #1e40af;
 }
 
+.route-plan-cell strong {
+  color: var(--clr-text);
+  display: block;
+  margin-bottom: 0.15rem;
+}
+
 .empty-message { color: var(--clr-muted); text-align: center; padding: 3rem 1rem; }
 
 /* ── Status badges ───────────────────────────────── */
@@ -436,6 +614,15 @@ tbody td { padding: 0.85rem 1rem; vertical-align: middle; }
 @media (max-width: 480px) { .form-grid { grid-template-columns: 1fr; } }
 
 @media (max-width: 720px) {
+  .planner-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .planner-controls input {
+    min-width: 0;
+    width: 100%;
+  }
+
   .lead-map {
     height: 320px;
   }
