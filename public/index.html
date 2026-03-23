@@ -39,6 +39,84 @@
     <!-- Stats bar -->
     <div class="stats" id="stats-bar"></div>
 
+    <section class="team-panel">
+      <div class="team-panel-header">
+        <div>
+          <h2>Teams &amp; Reps</h2>
+          <p>Create canvassing teams and assign active reps before building routes.</p>
+        </div>
+      </div>
+      <div class="team-panel-grid">
+        <section class="team-panel-column" aria-labelledby="team-form-heading">
+          <div class="planner-subheader">
+            <h3 id="team-form-heading">Create Team</h3>
+            <p>Use teams to organize turf ownership and rep rosters.</p>
+          </div>
+          <form id="team-form" novalidate>
+            <div class="form-group">
+              <label for="team-name-input">Team Name</label>
+              <input type="text" id="team-name-input" placeholder="Northside, East Canvassers..." required />
+            </div>
+            <div class="form-group full-width">
+              <label for="team-notes-input">Notes</label>
+              <textarea id="team-notes-input" rows="2" placeholder="Optional team notes"></textarea>
+            </div>
+            <p id="team-form-error" class="form-error hidden"></p>
+            <div class="form-actions compact-actions">
+              <button type="submit" class="btn btn-primary">Add Team</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="team-panel-column" aria-labelledby="rep-form-heading">
+          <div class="planner-subheader">
+            <h3 id="rep-form-heading">Add Rep</h3>
+            <p>Attach each rep to a team so routes can be assigned cleanly.</p>
+          </div>
+          <form id="rep-form" novalidate>
+            <div class="form-grid compact-grid">
+              <div class="form-group">
+                <label for="rep-name-input">Rep Name</label>
+                <input type="text" id="rep-name-input" placeholder="Jordan Smith" required />
+              </div>
+              <div class="form-group">
+                <label for="rep-team-select">Team</label>
+                <select id="rep-team-select"></select>
+              </div>
+              <div class="form-group">
+                <label for="rep-email-input">Email</label>
+                <input type="email" id="rep-email-input" placeholder="jordan@example.com" />
+              </div>
+              <div class="form-group">
+                <label for="rep-phone-input">Phone</label>
+                <input type="tel" id="rep-phone-input" placeholder="+1 555 000 0000" />
+              </div>
+            </div>
+            <p id="rep-form-error" class="form-error hidden"></p>
+            <div class="form-actions compact-actions">
+              <button type="submit" class="btn btn-primary">Add Rep</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="team-panel-column" aria-labelledby="team-directory-heading">
+          <div class="planner-subheader">
+            <h3 id="team-directory-heading">Team Directory</h3>
+            <p id="team-directory-summary">No teams created yet.</p>
+          </div>
+          <div id="team-directory-list" class="directory-list"></div>
+        </section>
+
+        <section class="team-panel-column" aria-labelledby="rep-directory-heading">
+          <div class="planner-subheader">
+            <h3 id="rep-directory-heading">Rep Directory</h3>
+            <p id="rep-directory-summary">No reps created yet.</p>
+          </div>
+          <div id="rep-directory-list" class="directory-list"></div>
+        </section>
+      </div>
+    </section>
+
     <section class="planner-panel">
       <div class="planner-panel-header">
         <div>
@@ -46,7 +124,8 @@
           <p>Group leads into turf areas by neighborhood, ZIP, or grid, then build a simple daily stop order for each rep.</p>
         </div>
         <div class="planner-controls">
-          <input type="text" id="route-rep-input" placeholder="Rep name for today&#39;s route" autocomplete="off" />
+          <select id="route-team-select"></select>
+          <select id="route-rep-select"></select>
           <input type="date" id="route-date-input" />
         </div>
       </div>
@@ -112,6 +191,7 @@
             <th>Name</th>
             <th>Address</th>
             <th>Turf</th>
+            <th>Team</th>
             <th>Rep Route</th>
             <th>Home Type</th>
             <th>Company</th>
@@ -126,7 +206,7 @@
         </thead>
         <tbody id="leads-table-body">
           <tr id="empty-row">
-            <td colspan="13" class="empty-message">No leads found.</td>
+            <td colspan="14" class="empty-message">No leads found.</td>
           </tr>
         </tbody>
       </table>
@@ -205,8 +285,13 @@
           </div>
 
           <div class="form-group">
+            <label for="input-assigned-team">Assigned Team</label>
+            <select id="input-assigned-team"></select>
+          </div>
+
+          <div class="form-group">
             <label for="input-assigned-rep">Assigned Rep</label>
-            <input type="text" id="input-assigned-rep" placeholder="Jordan, Sam, Taylor..." />
+            <select id="input-assigned-rep"></select>
           </div>
 
           <div class="form-group">

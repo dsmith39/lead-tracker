@@ -15,8 +15,42 @@ async function clearLeads() {
   );
 }
 
+async function clearReps() {
+  const res = await fetch(`${BASE}/api/reps`);
+  const reps = await res.json();
+  await Promise.all(
+    reps.map((rep) => fetch(`${BASE}/api/reps/${rep._id}`, { method: 'DELETE' }))
+  );
+}
+
+async function clearTeams() {
+  const res = await fetch(`${BASE}/api/teams`);
+  const teams = await res.json();
+  await Promise.all(
+    teams.map((team) => fetch(`${BASE}/api/teams/${team._id}`, { method: 'DELETE' }))
+  );
+}
+
 async function createLead(data) {
   const res = await fetch(`${BASE}/api/leads`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+async function createTeam(data) {
+  const res = await fetch(`${BASE}/api/teams`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+async function createRep(data) {
+  const res = await fetch(`${BASE}/api/reps`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -28,6 +62,8 @@ async function createLead(data) {
 
 test.beforeEach(async () => {
   await clearLeads();
+  await clearReps();
+  await clearTeams();
 });
 
 // ── Page load ─────────────────────────────────────────────────────────────────
@@ -66,6 +102,9 @@ test('can add a new lead', async ({ page }) => {
 });
 
 test('planner groups leads by turf and can assign a lead to a rep route', async ({ page }) => {
+  const team = await createTeam({ name: 'Northside Team' });
+  const rep = await createRep({ name: 'Avery', teamId: team._id });
+
   await createLead({
     name: 'ZIP Turf Lead',
     status: 'not-visited',
@@ -84,22 +123,29 @@ test('planner groups leads by turf and can assign a lead to a rep route', async 
   await expect(page.locator('.turf-group-card').filter({ hasText: 'ZIP: 62701' })).toBeVisible();
   await expect(page.locator('.turf-group-card').filter({ hasText: 'Neighborhood: Downtown' })).toBeVisible();
 
-  await page.fill('#route-rep-input', 'Avery');
+  await page.selectOption('#route-team-select', team._id);
+  await page.selectOption('#route-rep-select', rep._id);
   await page.fill('#route-date-input', '2026-03-25');
 
   const zipGroup = page.locator('.turf-group-card').filter({ hasText: 'ZIP: 62701' });
   await zipGroup.getByRole('button', { name: 'Add to Route' }).click();
 
-  await expect(page.locator('#route-plan-summary')).toContainText('1 stop for Avery on 2026-03-25');
+  await expect(page.locator('#route-plan-summary')).toContainText('1 stop for Avery (Northside Team) on 2026-03-25');
   await expect(page.locator('.route-stop-name').first()).toContainText('ZIP Turf Lead');
   await expect(page.locator('tbody')).toContainText('Avery');
+  await expect(page.locator('tbody')).toContainText('Northside Team');
   await expect(page.locator('tbody')).toContainText('Stop 1');
 });
 
 test('planner manual ordering persists when route stops are moved', async ({ page }) => {
+  const team = await createTeam({ name: 'Denver Team' });
+  const rep = await createRep({ name: 'Taylor', teamId: team._id });
+
   await createLead({
     name: 'First Route Stop',
     status: 'not-visited',
+    assignedTeamId: team._id,
+    assignedRepId: rep._id,
     assignedRep: 'Taylor',
     routePlan: { date: '2026-03-26', order: 1 },
     address: { street: '100 First Ave', city: 'Denver', state: 'CO', postalCode: '80202', country: 'USA' },
@@ -108,6 +154,8 @@ test('planner manual ordering persists when route stops are moved', async ({ pag
   await createLead({
     name: 'Second Route Stop',
     status: 'not-visited',
+    assignedTeamId: team._id,
+    assignedRepId: rep._id,
     assignedRep: 'Taylor',
     routePlan: { date: '2026-03-26', order: 2 },
     address: { street: '200 Second Ave', city: 'Denver', state: 'CO', postalCode: '80202', country: 'USA' },
@@ -115,7 +163,8 @@ test('planner manual ordering persists when route stops are moved', async ({ pag
   });
 
   await page.goto('/');
-  await page.fill('#route-rep-input', 'Taylor');
+  await page.selectOption('#route-team-select', team._id);
+  await page.selectOption('#route-rep-select', rep._id);
   await page.fill('#route-date-input', '2026-03-26');
 
   const routeStops = page.locator('.route-stop-name');
@@ -128,12 +177,42 @@ test('planner manual ordering persists when route stops are moved', async ({ pag
   await expect(routeStops.nth(1)).toContainText('First Route Stop');
 
   await page.reload();
-  await page.fill('#route-rep-input', 'Taylor');
+  await page.selectOption('#route-team-select', team._id);
+  await page.selectOption('#route-rep-select', rep._id);
   await page.fill('#route-date-input', '2026-03-26');
 
   const reloadedStops = page.locator('.route-stop-name');
   await expect(reloadedStops.nth(0)).toContainText('Second Route Stop');
   await expect(reloadedStops.nth(1)).toContainText('First Route Stop');
+});
+
+test('can create a team and rep from the management panel and assign them on a lead', async ({ page }) => {
+  await page.goto('/');
+
+  await page.fill('#team-name-input', 'Metro Team');
+  await page.fill('#team-notes-input', 'Covers central city blocks.');
+  await page.click('#team-form button[type="submit"]');
+
+  await expect(page.locator('#team-directory-list')).toContainText('Metro Team');
+
+  await page.fill('#rep-name-input', 'Jordan Smith');
+  await page.selectOption('#rep-team-select', { label: 'Metro Team' });
+  await page.fill('#rep-email-input', 'jordan@example.com');
+  await page.click('#rep-form button[type="submit"]');
+
+  await expect(page.locator('#rep-directory-list')).toContainText('Jordan Smith');
+  await expect(page.locator('#rep-directory-list')).toContainText('Metro Team');
+
+  await page.click('#btn-open-modal');
+  await page.fill('#input-name', 'Managed Lead');
+  await page.selectOption('#input-assigned-team', { label: 'Metro Team' });
+  await page.selectOption('#input-assigned-rep', { label: 'Jordan Smith' });
+  await page.fill('#input-route-date', '2026-03-27');
+  await page.click('#lead-form button[type="submit"]');
+
+  await expect(page.locator('tbody')).toContainText('Managed Lead');
+  await expect(page.locator('tbody')).toContainText('Metro Team');
+  await expect(page.locator('tbody')).toContainText('Jordan Smith');
 });
 
 test('clicking the map in browse mode does not open the add modal', async ({ page }) => {

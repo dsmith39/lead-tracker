@@ -2,55 +2,78 @@
 'use strict';
 
 const API = '/api/leads';
+const TEAM_API = '/api/teams';
+const REP_API = '/api/reps';
 const DEFAULT_MAP_CENTER = [39.8283, -98.5795];
 const DEFAULT_MAP_ZOOM = 4;
 
-// ── DOM refs ──────────────────────────────────────────────────────────────────
-const tableBody       = document.getElementById('leads-table-body');
-const emptyRow        = document.getElementById('empty-row');
-const statsBar        = document.getElementById('stats-bar');
-const searchInput     = document.getElementById('search-input');
-const statusFilter    = document.getElementById('status-filter');
-const plannerRepInput = document.getElementById('route-rep-input');
+// DOM refs
+const tableBody = document.getElementById('leads-table-body');
+const emptyRow = document.getElementById('empty-row');
+const statsBar = document.getElementById('stats-bar');
+const searchInput = document.getElementById('search-input');
+const statusFilter = document.getElementById('status-filter');
+
+const teamForm = document.getElementById('team-form');
+const teamNameInput = document.getElementById('team-name-input');
+const teamNotesInput = document.getElementById('team-notes-input');
+const teamFormError = document.getElementById('team-form-error');
+const teamDirectorySummary = document.getElementById('team-directory-summary');
+const teamDirectoryList = document.getElementById('team-directory-list');
+
+const repForm = document.getElementById('rep-form');
+const repNameInput = document.getElementById('rep-name-input');
+const repEmailInput = document.getElementById('rep-email-input');
+const repPhoneInput = document.getElementById('rep-phone-input');
+const repTeamSelect = document.getElementById('rep-team-select');
+const repFormError = document.getElementById('rep-form-error');
+const repDirectorySummary = document.getElementById('rep-directory-summary');
+const repDirectoryList = document.getElementById('rep-directory-list');
+
+const plannerTeamSelect = document.getElementById('route-team-select');
+const plannerRepSelect = document.getElementById('route-rep-select');
 const plannerDateInput = document.getElementById('route-date-input');
 const turfGroupsSummary = document.getElementById('turf-groups-summary');
 const turfGroupsList = document.getElementById('turf-groups-list');
 const routePlanSummary = document.getElementById('route-plan-summary');
 const routeStopsList = document.getElementById('route-stops-list');
-const mapSearchForm   = document.getElementById('map-search-form');
-const mapSearchInput  = document.getElementById('map-search-input');
+
+const mapSearchForm = document.getElementById('map-search-form');
+const mapSearchInput = document.getElementById('map-search-input');
 const currentLocationButton = document.getElementById('btn-current-location');
 const mapAddModeButton = document.getElementById('btn-map-add-mode');
 const mapSelectionStatus = document.getElementById('map-selection-status');
 const mapSearchFeedback = document.getElementById('map-search-feedback');
 
-const modalOverlay    = document.getElementById('modal-overlay');
-const modalTitle      = document.getElementById('modal-title');
-const leadForm        = document.getElementById('lead-form');
-const leadIdInput     = document.getElementById('lead-id');
-const nameInput       = document.getElementById('input-name');
-const companyInput    = document.getElementById('input-company');
-const emailInput      = document.getElementById('input-email');
-const phoneInput      = document.getElementById('input-phone');
-const statusInput     = document.getElementById('input-status');
-const homeTypeInput   = document.getElementById('input-home-type');
-const turfTypeInput   = document.getElementById('input-turf-type');
-const turfLabelInput  = document.getElementById('input-turf-label');
+const modalOverlay = document.getElementById('modal-overlay');
+const modalTitle = document.getElementById('modal-title');
+const leadForm = document.getElementById('lead-form');
+const leadIdInput = document.getElementById('lead-id');
+const nameInput = document.getElementById('input-name');
+const companyInput = document.getElementById('input-company');
+const emailInput = document.getElementById('input-email');
+const phoneInput = document.getElementById('input-phone');
+const statusInput = document.getElementById('input-status');
+const homeTypeInput = document.getElementById('input-home-type');
+const turfTypeInput = document.getElementById('input-turf-type');
+const turfLabelInput = document.getElementById('input-turf-label');
+const assignedTeamInput = document.getElementById('input-assigned-team');
 const assignedRepInput = document.getElementById('input-assigned-rep');
 const routeDateFieldInput = document.getElementById('input-route-date');
 const knockCountInput = document.getElementById('input-knock-count');
-const lastVisitInput  = document.getElementById('input-last-visit');
-const streetInput     = document.getElementById('input-address-street');
-const cityInput       = document.getElementById('input-address-city');
-const stateInput      = document.getElementById('input-address-state');
-const postalInput     = document.getElementById('input-address-postal');
-const countryInput    = document.getElementById('input-address-country');
-const latInput        = document.getElementById('input-lat');
-const lngInput        = document.getElementById('input-lng');
-const notesInput      = document.getElementById('input-notes');
-const formError       = document.getElementById('form-error');
+const lastVisitInput = document.getElementById('input-last-visit');
+const streetInput = document.getElementById('input-address-street');
+const cityInput = document.getElementById('input-address-city');
+const stateInput = document.getElementById('input-address-state');
+const postalInput = document.getElementById('input-address-postal');
+const countryInput = document.getElementById('input-address-country');
+const latInput = document.getElementById('input-lat');
+const lngInput = document.getElementById('input-lng');
+const notesInput = document.getElementById('input-notes');
+const formError = document.getElementById('form-error');
 const leadFormLockHint = document.getElementById('lead-form-lock-hint');
 const enableLeadEditButton = document.getElementById('btn-enable-lead-edit');
+
 const visitLogSection = document.getElementById('visit-log-section');
 const visitForm = document.getElementById('visit-form');
 const visitOutcomeInput = document.getElementById('visit-outcome');
@@ -61,23 +84,24 @@ const visitFormError = document.getElementById('visit-form-error');
 const visitHistoryList = document.getElementById('visit-history-list');
 const visitHistoryEmpty = document.getElementById('visit-history-empty');
 
-const confirmOverlay  = document.getElementById('confirm-overlay');
-const btnConfirmDel   = document.getElementById('btn-confirm-delete');
+const confirmOverlay = document.getElementById('confirm-overlay');
+const btnConfirmDel = document.getElementById('btn-confirm-delete');
 
-// ── State ─────────────────────────────────────────────────────────────────────
+// State
 let pendingDeleteId = null;
-let debounceTimer   = null;
+let debounceTimer = null;
 let leadMap = null;
 let mapMarkersLayer = null;
 let leadsCache = [];
+let teamsCache = [];
+let repsCache = [];
 let mapAddModeEnabled = false;
 let searchMarker = null;
 let locatingUser = false;
 let visitHistory = [];
 let leadDetailsEditable = true;
-let editingRouteSnapshot = { rep: '', date: '', order: null };
+let editingRouteSnapshot = { repId: '', date: '', order: null };
 
-// ── Fetch helpers ─────────────────────────────────────────────────────────────
 async function apiFetch(url, options = {}) {
   const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
@@ -88,15 +112,33 @@ async function apiFetch(url, options = {}) {
   return data;
 }
 
-// ── Render ────────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function showInlineError(element, message) {
+  element.textContent = message;
+  element.classList.remove('hidden');
+}
+
+function hideInlineError(element) {
+  element.textContent = '';
+  element.classList.add('hidden');
+}
+
 function statusBadge(status) {
   const labels = {
-    'not-visited':       'Not Visited',
-    'no-answer':         'No Answer',
-    'spoke-to-owner':    'Spoke To Owner',
-    'not-interested':    'Not Interested',
+    'not-visited': 'Not Visited',
+    'no-answer': 'No Answer',
+    'spoke-to-owner': 'Spoke To Owner',
+    'not-interested': 'Not Interested',
     'callback-requested': 'Callback Requested',
-    'sale-closed':       'Sale Closed',
+    'sale-closed': 'Sale Closed',
   };
   return `<span class="badge badge-${status}">${labels[status] ?? status}</span>`;
 }
@@ -142,15 +184,11 @@ function formatTurfType(type) {
     zip: 'ZIP',
     grid: 'Grid',
   };
-
   return labels[type] || 'Turf';
 }
 
 function buildGridLabel(lat, lng) {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return '';
-  }
-
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return '';
   const latBucket = Math.floor((lat + 90) / 0.02);
   const lngBucket = Math.floor((lng + 180) / 0.02);
   return `Grid ${latBucket}-${lngBucket}`;
@@ -158,50 +196,148 @@ function buildGridLabel(lat, lng) {
 
 function turfLabel(lead) {
   const explicitLabel = String(lead?.turf?.label || '').trim();
-  if (explicitLabel) {
-    return explicitLabel;
-  }
+  if (explicitLabel) return explicitLabel;
 
   const turfType = lead?.turf?.type || 'zip';
-  if (turfType === 'zip') {
-    return String(lead?.address?.postalCode || '').trim();
-  }
-
-  if (turfType === 'neighborhood') {
-    return String(lead?.address?.city || '').trim();
-  }
-
+  if (turfType === 'zip') return String(lead?.address?.postalCode || '').trim();
+  if (turfType === 'neighborhood') return String(lead?.address?.city || '').trim();
   return buildGridLabel(lead?.location?.lat, lead?.location?.lng);
 }
 
 function formatTurfArea(lead) {
   const label = turfLabel(lead);
-  if (!label) {
-    return 'Unassigned Turf';
+  return label ? `${formatTurfType(lead?.turf?.type || 'zip')}: ${label}` : 'Unassigned Turf';
+}
+
+function assignedTeamName(lead) {
+  return String(lead?.assignedTeamName || '').trim();
+}
+
+function assignedRepName(lead) {
+  return String(lead?.assignedRep || '').trim();
+}
+
+function assignedRepId(lead) {
+  return String(lead?.assignedRepId || '').trim();
+}
+
+function routeSummaryText(lead) {
+  const repName = assignedRepName(lead);
+  const routeDate = lead?.routePlan?.date || '';
+  const routeOrder = lead?.routePlan?.order;
+  const teamName = assignedTeamName(lead);
+
+  if (!repName || !routeDate) {
+    return 'Not on a route yet';
   }
 
-  return `${formatTurfType(lead?.turf?.type || 'zip')}: ${label}`;
+  const parts = [repName];
+  if (teamName) parts.push(teamName);
+  parts.push(routeDate);
+  parts.push(Number.isInteger(routeOrder) ? `Stop ${routeOrder}` : 'Unordered');
+  return parts.join(' · ');
+}
+
+function formatTeamCell(lead) {
+  const teamName = assignedTeamName(lead);
+  if (!teamName) {
+    return '—';
+  }
+
+  const repName = assignedRepName(lead);
+  return `
+    <div class="team-cell">
+      <strong>${escHtml(teamName)}</strong>
+      <div>${escHtml(repName || 'Team only')}</div>
+    </div>`;
 }
 
 function formatRoutePlan(lead) {
-  const assignedRep = String(lead?.assignedRep || '').trim();
+  const repName = assignedRepName(lead);
   const routeDate = lead?.routePlan?.date || '';
   const routeOrder = lead?.routePlan?.order;
+  const teamName = assignedTeamName(lead);
 
-  if (!assignedRep || !routeDate) {
+  if (!repName || !routeDate) {
     return '—';
   }
 
   return `
     <div class="route-plan-cell">
-      <strong>${escHtml(assignedRep)}</strong>
+      <strong>${escHtml(repName)}</strong>
+      <div>${escHtml(teamName || 'No team')}</div>
       <div>${escHtml(routeDate)}</div>
       <div>${escHtml(Number.isInteger(routeOrder) ? `Stop ${routeOrder}` : 'Unordered')}</div>
     </div>`;
 }
 
+function hasCoordinates(lead) {
+  return Number.isFinite(lead?.location?.lat) && Number.isFinite(lead?.location?.lng);
+}
+
+function formatCoordinates(lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return mapAddModeEnabled ? 'Add mode armed: click the map' : 'Map browsing mode';
+  }
+  return `Selected: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+}
+
+function getCoordinateInputValue(input) {
+  return input.value === '' ? Number.NaN : Number(input.value);
+}
+
+function updateMapSelectionStatus(lat, lng) {
+  mapSelectionStatus.textContent = formatCoordinates(lat, lng);
+}
+
+function setMapSearchFeedback(message) {
+  mapSearchFeedback.textContent = message;
+}
+
+function showVisitFormError(message) {
+  showInlineError(visitFormError, message);
+}
+
+function hideVisitFormError() {
+  hideInlineError(visitFormError);
+}
+
+function showFormError(message) {
+  showInlineError(formError, message);
+}
+
+function hideFormError() {
+  hideInlineError(formError);
+}
+
+function setCurrentLocationButtonState(isLoading) {
+  locatingUser = isLoading;
+  currentLocationButton.classList.toggle('btn-loading', isLoading);
+  currentLocationButton.textContent = isLoading ? 'Locating...' : 'My Location';
+}
+
+function selectedPlannerTeamId() {
+  return plannerTeamSelect.value;
+}
+
+function selectedPlannerRepId() {
+  return plannerRepSelect.value;
+}
+
 function selectedPlannerRep() {
-  return plannerRepInput.value.trim();
+  return repsCache.find((rep) => rep._id === selectedPlannerRepId()) || null;
+}
+
+function selectedLeadTeamId() {
+  return assignedTeamInput.value;
+}
+
+function selectedLeadRepId() {
+  return assignedRepInput.value;
+}
+
+function selectedLeadRep() {
+  return repsCache.find((rep) => rep._id === selectedLeadRepId()) || null;
 }
 
 function selectedPlannerDate() {
@@ -213,11 +349,14 @@ function hasPlannerSelection() {
 }
 
 function isLeadOnSelectedRoute(lead) {
+  const rep = selectedPlannerRep();
+  if (!rep || !selectedPlannerDate()) {
+    return false;
+  }
+
   return Boolean(
-    selectedPlannerRep()
-    && selectedPlannerDate()
-    && lead.assignedRep === selectedPlannerRep()
-    && lead.routePlan?.date === selectedPlannerDate()
+    lead.routePlan?.date === selectedPlannerDate()
+    && ((assignedRepId(lead) && assignedRepId(lead) === rep._id) || assignedRepName(lead) === rep.name)
   );
 }
 
@@ -227,11 +366,9 @@ function routeStopsForSelection(leads) {
     .sort((left, right) => {
       const leftOrder = Number.isInteger(left.routePlan?.order) ? left.routePlan.order : Number.MAX_SAFE_INTEGER;
       const rightOrder = Number.isInteger(right.routePlan?.order) ? right.routePlan.order : Number.MAX_SAFE_INTEGER;
-
       if (leftOrder !== rightOrder) {
         return leftOrder - rightOrder;
       }
-
       return String(left.name || '').localeCompare(String(right.name || ''));
     });
 }
@@ -245,11 +382,7 @@ function groupedTurfAreas(leads) {
     const key = `${type}:${label}`;
 
     if (!groups.has(key)) {
-      groups.set(key, {
-        type,
-        label,
-        leads: [],
-      });
+      groups.set(key, { type, label, leads: [] });
     }
 
     groups.get(key).leads.push(lead);
@@ -261,6 +394,111 @@ function groupedTurfAreas(leads) {
       ...group,
       leads: group.leads.sort((left, right) => String(left.name || '').localeCompare(String(right.name || ''))),
     }));
+}
+
+function setSelectOptions(select, items, blankLabel) {
+  const previousValue = select.value;
+  const options = [];
+
+  if (blankLabel !== null) {
+    options.push(`<option value="">${escHtml(blankLabel)}</option>`);
+  }
+
+  items.forEach((item) => {
+    options.push(`<option value="${escHtml(item.value)}">${escHtml(item.label)}</option>`);
+  });
+
+  select.innerHTML = options.join('');
+  const hasPreviousValue = items.some((item) => item.value === previousValue);
+  if (hasPreviousValue) {
+    select.value = previousValue;
+  }
+}
+
+function repsForTeam(teamId) {
+  return repsCache.filter((rep) => !teamId || rep.teamId === teamId);
+}
+
+function syncRosterSelectors() {
+  setSelectOptions(repTeamSelect, teamsCache.map((team) => ({ value: team._id, label: team.name })), 'No team');
+
+  setSelectOptions(plannerTeamSelect, teamsCache.map((team) => ({ value: team._id, label: team.name })), 'All teams');
+  const plannerTeamId = selectedPlannerTeamId();
+  const plannerRepItems = repsForTeam(plannerTeamId).map((rep) => ({ value: rep._id, label: rep.name }));
+  setSelectOptions(plannerRepSelect, plannerRepItems, 'Select rep');
+
+  setSelectOptions(assignedTeamInput, teamsCache.map((team) => ({ value: team._id, label: team.name })), 'No team');
+  const leadTeamId = selectedLeadTeamId();
+  const leadRepItems = repsForTeam(leadTeamId).map((rep) => ({ value: rep._id, label: rep.name }));
+  setSelectOptions(assignedRepInput, leadRepItems, 'No rep');
+}
+
+function renderRosterDirectory() {
+  const teamCount = teamsCache.length;
+  const repCount = repsCache.length;
+  teamDirectorySummary.textContent = teamCount
+    ? `${teamCount} team${teamCount === 1 ? '' : 's'} configured.`
+    : 'No teams created yet.';
+  repDirectorySummary.textContent = repCount
+    ? `${repCount} active rep${repCount === 1 ? '' : 's'} ready for assignment.`
+    : 'No reps created yet.';
+
+  teamDirectoryList.innerHTML = '';
+  if (!teamCount) {
+    teamDirectoryList.innerHTML = '<p class="planner-empty-state">Create a team to start organizing the roster.</p>';
+  } else {
+    teamsCache.forEach((team) => {
+      const memberCount = repsCache.filter((rep) => rep.teamId === team._id).length;
+      const card = document.createElement('article');
+      card.className = 'directory-card';
+      card.innerHTML = `
+        <div class="directory-card-title">${escHtml(team.name)}</div>
+        <div class="directory-card-meta">${memberCount} rep${memberCount === 1 ? '' : 's'}</div>
+        <div class="directory-card-meta">${escHtml(team.notes || 'No notes')}</div>`;
+      teamDirectoryList.appendChild(card);
+    });
+  }
+
+  repDirectoryList.innerHTML = '';
+  if (!repCount) {
+    repDirectoryList.innerHTML = '<p class="planner-empty-state">Add reps so routes can be assigned from the planner.</p>';
+  } else {
+    repsCache.forEach((rep) => {
+      const card = document.createElement('article');
+      card.className = 'directory-card';
+      card.innerHTML = `
+        <div class="directory-card-title">${escHtml(rep.name)}</div>
+        <div class="directory-card-meta">${escHtml(rep.teamName || 'No team assigned')}</div>
+        <div class="directory-card-meta">${escHtml(rep.email || 'No email')}</div>
+        <div class="directory-card-meta">${escHtml(rep.phone || 'No phone')}</div>`;
+      repDirectoryList.appendChild(card);
+    });
+  }
+}
+
+function renderStats(leads) {
+  const counts = leads.reduce((acc, lead) => {
+    acc[lead.status] = (acc[lead.status] || 0) + 1;
+    return acc;
+  }, {});
+  const routedCount = leads.filter((lead) => assignedRepName(lead) && lead.routePlan?.date).length;
+  const turfCount = groupedTurfAreas(leads).length;
+
+  const items = [
+    { label: 'Total', value: leads.length },
+    { label: 'Teams', value: teamsCache.length },
+    { label: 'Active Reps', value: repsCache.length },
+    { label: 'Turf Areas', value: turfCount },
+    { label: 'On Route', value: routedCount },
+    { label: 'Not Visited', value: counts['not-visited'] || 0 },
+    { label: 'No Answer', value: counts['no-answer'] || 0 },
+    { label: 'Callback Requested', value: counts['callback-requested'] || 0 },
+    { label: 'Sale Closed', value: counts['sale-closed'] || 0 },
+  ];
+
+  statsBar.innerHTML = items
+    .map((item) => `<div class="stat-pill"><strong>${item.value}</strong> ${item.label}</div>`)
+    .join('');
 }
 
 function renderRoutePlanner(leads) {
@@ -285,8 +523,8 @@ function renderRoutePlanner(leads) {
         </div>
         <ul class="planner-lead-list">
           ${group.leads.map((lead) => {
-            const routeAction = !hasPlannerSelection()
-              ? '<button type="button" class="btn btn-secondary" disabled>Set rep/date</button>'
+            const routeAction = !selectedPlannerRep()
+              ? '<button type="button" class="btn btn-secondary" disabled>Select a rep</button>'
               : isLeadOnSelectedRoute(lead)
                 ? `<button type="button" class="btn btn-secondary" data-route-remove-id="${lead._id}">Remove</button>`
                 : `<button type="button" class="btn btn-primary" data-route-add-id="${lead._id}">Add to Route</button>`;
@@ -296,7 +534,7 @@ function renderRoutePlanner(leads) {
                 <div>
                   <div class="planner-lead-name">${escHtml(lead.name || 'Unnamed Lead')}</div>
                   <div class="planner-lead-meta">${escHtml(addressLine(lead.address))}</div>
-                  <div class="planner-lead-meta">${escHtml(formatRoutePlan(lead).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() || 'Not on a route yet')}</div>
+                  <div class="planner-lead-meta">${escHtml(routeSummaryText(lead))}</div>
                 </div>
                 <div class="planner-inline-actions">${routeAction}</div>
               </li>`;
@@ -306,21 +544,20 @@ function renderRoutePlanner(leads) {
     });
   }
 
-  const repName = selectedPlannerRep();
+  const rep = selectedPlannerRep();
   const routeDate = selectedPlannerDate();
   const routeStops = routeStopsForSelection(leads);
-
   routeStopsList.innerHTML = '';
 
-  if (!hasPlannerSelection()) {
-    routePlanSummary.textContent = 'Set a rep and date, then add stops from the turf groups.';
+  if (!rep || !routeDate) {
+    routePlanSummary.textContent = 'Select a rep and date, then add stops from the turf groups.';
     routeStopsList.innerHTML = '<li class="planner-empty-state">Manual ordering is enabled once a rep and route date are selected.</li>';
     return;
   }
 
   routePlanSummary.textContent = routeStops.length
-    ? `${routeStops.length} stop${routeStops.length === 1 ? '' : 's'} for ${repName} on ${routeDate}.`
-    : `No stops assigned to ${repName} on ${routeDate} yet.`;
+    ? `${routeStops.length} stop${routeStops.length === 1 ? '' : 's'} for ${rep.name}${rep.teamName ? ` (${rep.teamName})` : ''} on ${routeDate}.`
+    : `No stops assigned to ${rep.name} on ${routeDate} yet.`;
 
   if (!routeStops.length) {
     routeStopsList.innerHTML = '<li class="planner-empty-state">Add leads from the turf groups to build this rep\'s day.</li>';
@@ -347,45 +584,17 @@ function renderRoutePlanner(leads) {
   });
 }
 
-function hasCoordinates(lead) {
-  return Number.isFinite(lead?.location?.lat) && Number.isFinite(lead?.location?.lng);
-}
-
-function formatCoordinates(lat, lng) {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return mapAddModeEnabled ? 'Add mode armed: click the map' : 'Map browsing mode';
-  return `Selected: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-}
-
-function getCoordinateInputValue(input) {
-  if (input.value === '') {
-    return Number.NaN;
-  }
-
-  return Number(input.value);
-}
-
-function updateMapSelectionStatus(lat, lng) {
-  mapSelectionStatus.textContent = formatCoordinates(lat, lng);
-}
-
-function setMapSearchFeedback(message) {
-  mapSearchFeedback.textContent = message;
-}
-
-function showVisitFormError(message) {
-  visitFormError.textContent = message;
-  visitFormError.classList.remove('hidden');
-}
-
-function hideVisitFormError() {
-  visitFormError.textContent = '';
-  visitFormError.classList.add('hidden');
-}
-
-function setCurrentLocationButtonState(isLoading) {
-  locatingUser = isLoading;
-  currentLocationButton.classList.toggle('btn-loading', isLoading);
-  currentLocationButton.textContent = isLoading ? 'Locating...' : 'My Location';
+async function loadRosterData() {
+  const [teams, reps] = await Promise.all([
+    apiFetch(TEAM_API),
+    apiFetch(`${REP_API}?active=true`),
+  ]);
+  teamsCache = teams;
+  repsCache = reps;
+  syncRosterSelectors();
+  renderRosterDirectory();
+  renderStats(leadsCache);
+  renderRoutePlanner(leadsCache);
 }
 
 function syncMapAddModeUi() {
@@ -403,7 +612,6 @@ function setMapAddMode(enabled) {
 
 function renderSearchMarker(result) {
   if (!leadMap) return;
-
   if (searchMarker) {
     leadMap.removeLayer(searchMarker);
   }
@@ -417,10 +625,7 @@ function focusMapOnSearchResult(result) {
   if (!leadMap) return;
 
   if (Array.isArray(result.boundingBox) && result.boundingBox.length === 4 && result.boundingBox.every(Number.isFinite)) {
-    const bounds = L.latLngBounds(
-      [result.boundingBox[0], result.boundingBox[2]],
-      [result.boundingBox[1], result.boundingBox[3]]
-    );
+    const bounds = L.latLngBounds([result.boundingBox[0], result.boundingBox[2]], [result.boundingBox[1], result.boundingBox[3]]);
     leadMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
   } else {
     leadMap.flyTo([result.lat, result.lng], 16, { duration: 0.8 });
@@ -458,12 +663,6 @@ async function reverseGeocodeCoordinates(lat, lng) {
   }
 }
 
-function setMapFieldValues(lat, lng) {
-  latInput.value = Number(lat).toFixed(6);
-  lngInput.value = Number(lng).toFixed(6);
-  updateMapSelectionStatus(Number(lat), Number(lng));
-}
-
 function renderVisitHistory() {
   visitHistoryList.innerHTML = '';
 
@@ -473,7 +672,6 @@ function renderVisitHistory() {
   }
 
   visitHistoryEmpty.classList.add('hidden');
-
   visitHistory.forEach((visit) => {
     const item = document.createElement('li');
     item.className = 'visit-history-item';
@@ -484,15 +682,13 @@ function renderVisitHistory() {
       </div>
       <div class="visit-history-meta">Disposition: ${escHtml(visit.dispositionReason || '—')}</div>
       <div class="visit-history-meta">Next Follow-up: ${formatDateTime(visit.nextFollowUpAt)}</div>
-      <div class="visit-history-notes">${escHtml(visit.notes || 'No notes')}</div>
-    `;
+      <div class="visit-history-notes">${escHtml(visit.notes || 'No notes')}</div>`;
     visitHistoryList.appendChild(item);
   });
 }
 
 function setVisitSectionMode(isExistingLead) {
-  const opacity = isExistingLead ? '1' : '0.55';
-  visitLogSection.style.opacity = opacity;
+  visitLogSection.style.opacity = isExistingLead ? '1' : '0.55';
   visitForm.querySelectorAll('input, select, textarea, button').forEach((el) => {
     el.disabled = !isExistingLead;
   });
@@ -513,6 +709,7 @@ function leadDetailControls() {
     homeTypeInput,
     turfTypeInput,
     turfLabelInput,
+    assignedTeamInput,
     assignedRepInput,
     routeDateFieldInput,
     knockCountInput,
@@ -528,33 +725,8 @@ function leadDetailControls() {
   ];
 }
 
-async function updateLeadRouteAssignment(leadId, assignedRep, routeDate, routeOrder = null) {
-  await apiFetch(`${API}/${leadId}/route-plan`, {
-    method: 'PATCH',
-    body: JSON.stringify({
-      assignedRep,
-      routeDate,
-      routeOrder,
-    }),
-  });
-  await loadLeads();
-}
-
-async function savePlannerRouteOrder(orderedLeadIds) {
-  await apiFetch(`${API}/route-plan/reorder`, {
-    method: 'PATCH',
-    body: JSON.stringify({
-      assignedRep: selectedPlannerRep(),
-      routeDate: selectedPlannerDate(),
-      orderedLeadIds,
-    }),
-  });
-  await loadLeads();
-}
-
 function setLeadDetailsEditable(enabled, isExistingLead) {
   leadDetailsEditable = enabled;
-
   leadDetailControls().forEach((control) => {
     control.disabled = !enabled;
   });
@@ -562,7 +734,6 @@ function setLeadDetailsEditable(enabled, isExistingLead) {
   const saveLeadButton = leadForm.querySelector('button[type="submit"]');
   saveLeadButton.disabled = !enabled;
   saveLeadButton.classList.toggle('hidden', isExistingLead && !enabled);
-
   enableLeadEditButton.classList.toggle('hidden', !isExistingLead || enabled);
   leadFormLockHint.classList.toggle('hidden', !isExistingLead || enabled);
 }
@@ -616,18 +787,14 @@ function savedLeadMarkerIcon(status) {
 
 function fitMapToLeads(leads) {
   const leadsWithCoordinates = leads.filter(hasCoordinates);
-  if (!leadMap || leadsWithCoordinates.length === 0) {
-    return;
-  }
+  if (!leadMap || !leadsWithCoordinates.length) return;
 
   if (leadsWithCoordinates.length === 1) {
     leadMap.setView([leadsWithCoordinates[0].location.lat, leadsWithCoordinates[0].location.lng], 15);
     return;
   }
 
-  const bounds = L.latLngBounds(
-    leadsWithCoordinates.map((lead) => [lead.location.lat, lead.location.lng])
-  );
+  const bounds = L.latLngBounds(leadsWithCoordinates.map((lead) => [lead.location.lat, lead.location.lng]));
   leadMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
 }
 
@@ -635,16 +802,13 @@ function renderMapMarkers(leads) {
   if (!leadMap || !mapMarkersLayer) return;
 
   mapMarkersLayer.clearLayers();
-
-  leads
-    .filter(hasCoordinates)
-    .forEach((lead) => {
-      const marker = L.marker([lead.location.lat, lead.location.lng], {
-        icon: savedLeadMarkerIcon(lead.status),
-      });
-      marker.bindPopup(mapPopupHtml(lead));
-      mapMarkersLayer.addLayer(marker);
+  leads.filter(hasCoordinates).forEach((lead) => {
+    const marker = L.marker([lead.location.lat, lead.location.lng], {
+      icon: savedLeadMarkerIcon(lead.status),
     });
+    marker.bindPopup(mapPopupHtml(lead));
+    mapMarkersLayer.addLayer(marker);
+  });
 }
 
 function initializeMap() {
@@ -665,9 +829,7 @@ function initializeMap() {
   mapMarkersLayer = L.layerGroup().addTo(leadMap);
 
   leadMap.on('click', async (event) => {
-    if (!mapAddModeEnabled) {
-      return;
-    }
+    if (!mapAddModeEnabled) return;
 
     const { lat, lng } = event.latlng;
     setMapAddMode(false);
@@ -696,6 +858,7 @@ function renderRow(lead) {
     <td><strong>${escHtml(lead.name)}</strong></td>
     <td>${addressCell}</td>
     <td>${escHtml(formatTurfArea(lead))}</td>
+    <td>${formatTeamCell(lead)}</td>
     <td>${formatRoutePlan(lead)}</td>
     <td>${escHtml(formatHomeType(lead.homeType))}</td>
     <td>${escHtml(lead.company || '—')}</td>
@@ -707,46 +870,13 @@ function renderRow(lead) {
     <td>${formatDate(lead.createdAt)}</td>
     <td>
       <div class="action-btns">
-        <button class="btn-icon-sm btn-edit"   data-id="${lead._id}">Edit</button>
+        <button class="btn-icon-sm btn-edit" data-id="${lead._id}">Edit</button>
         <button class="btn-icon-sm btn-delete" data-id="${lead._id}">Delete</button>
       </div>
     </td>`;
   return tr;
 }
 
-function renderStats(leads) {
-  const counts = leads.reduce((acc, l) => {
-    acc[l.status] = (acc[l.status] || 0) + 1;
-    return acc;
-  }, {});
-  const routedCount = leads.filter((lead) => String(lead.assignedRep || '').trim() && lead.routePlan?.date).length;
-  const turfCount = groupedTurfAreas(leads).length;
-
-  const items = [
-    { label: 'Total',       value: leads.length },
-    { label: 'Turf Areas', value: turfCount },
-    { label: 'On Route', value: routedCount },
-    { label: 'Not Visited', value: counts['not-visited'] || 0 },
-    { label: 'No Answer', value: counts['no-answer'] || 0 },
-    { label: 'Callback Requested', value: counts['callback-requested'] || 0 },
-    { label: 'Sale Closed', value: counts['sale-closed'] || 0 },
-  ];
-
-  statsBar.innerHTML = items
-    .map(i => `<div class="stat-pill"><strong>${i.value}</strong> ${i.label}</div>`)
-    .join('');
-}
-
-function escHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-// ── Load leads ────────────────────────────────────────────────────────────────
 async function loadLeads() {
   const params = new URLSearchParams();
   const search = searchInput.value.trim();
@@ -757,14 +887,13 @@ async function loadLeads() {
   const leads = await apiFetch(`${API}?${params}`);
   leadsCache = leads;
 
-  // Clear existing rows (keep emptyRow in DOM for reference)
-  tableBody.querySelectorAll('tr:not(#empty-row)').forEach(r => r.remove());
+  tableBody.querySelectorAll('tr:not(#empty-row)').forEach((row) => row.remove());
 
-  if (leads.length === 0) {
+  if (!leads.length) {
     emptyRow.classList.remove('hidden');
   } else {
     emptyRow.classList.add('hidden');
-    leads.forEach(lead => tableBody.appendChild(renderRow(lead)));
+    leads.forEach((lead) => tableBody.appendChild(renderRow(lead)));
   }
 
   renderStats(leads);
@@ -776,46 +905,68 @@ async function loadLeads() {
   }
 }
 
-// ── Modal helpers ─────────────────────────────────────────────────────────────
+function applyLeadTeamFilter(preserveRepId = '') {
+  const currentTeamId = selectedLeadTeamId();
+  const items = repsForTeam(currentTeamId).map((rep) => ({ value: rep._id, label: rep.name }));
+  setSelectOptions(assignedRepInput, items, 'No rep');
+  if (preserveRepId && items.some((item) => item.value === preserveRepId)) {
+    assignedRepInput.value = preserveRepId;
+  }
+}
+
+function populateLeadAssignmentControls({ teamId = '', repId = '' }) {
+  assignedTeamInput.value = teamId;
+  applyLeadTeamFilter(repId);
+  if (!assignedRepInput.value && repId) {
+    assignedRepInput.value = repId;
+  }
+}
+
 function openModal(lead = null) {
   leadForm.reset();
   hideFormError();
   const defaultPlannerRep = selectedPlannerRep();
+  const defaultPlannerTeamId = defaultPlannerRep?.teamId || selectedPlannerTeamId();
+  const defaultPlannerRepId = defaultPlannerRep?._id || '';
   const defaultPlannerDate = selectedPlannerDate();
 
   if (lead) {
     const isEditing = Boolean(lead._id);
     modalTitle.textContent = isEditing ? 'Edit Lead' : 'Add Lead from Map';
-    leadIdInput.value     = lead._id || '';
-    nameInput.value       = lead.name || '';
-    companyInput.value    = lead.company || '';
-    emailInput.value      = lead.email || '';
-    phoneInput.value      = lead.phone || '';
-    statusInput.value     = lead.status || 'not-visited';
-    homeTypeInput.value   = lead.homeType || 'other';
-    turfTypeInput.value   = lead.turf?.type || 'zip';
-    turfLabelInput.value  = turfLabel(lead);
-    assignedRepInput.value = lead.assignedRep || (isEditing ? '' : defaultPlannerRep);
-    routeDateFieldInput.value = lead.routePlan?.date || ((lead.assignedRep || defaultPlannerRep) ? defaultPlannerDate : '');
+    leadIdInput.value = lead._id || '';
+    nameInput.value = lead.name || '';
+    companyInput.value = lead.company || '';
+    emailInput.value = lead.email || '';
+    phoneInput.value = lead.phone || '';
+    statusInput.value = lead.status || 'not-visited';
+    homeTypeInput.value = lead.homeType || 'other';
+    turfTypeInput.value = lead.turf?.type || 'zip';
+    turfLabelInput.value = turfLabel(lead);
+    populateLeadAssignmentControls({
+      teamId: lead.assignedTeamId || (!isEditing ? defaultPlannerTeamId : ''),
+      repId: lead.assignedRepId || (!isEditing ? defaultPlannerRepId : ''),
+    });
+    routeDateFieldInput.value = lead.routePlan?.date || ((!isEditing && defaultPlannerRepId) ? defaultPlannerDate : '');
     knockCountInput.value = lead.knockCount ?? 0;
-    lastVisitInput.value  = toDateTimeLocalValue(lead.lastVisitAt);
-    streetInput.value     = lead.address?.street || '';
-    cityInput.value       = lead.address?.city || '';
-    stateInput.value      = lead.address?.state || '';
-    postalInput.value     = lead.address?.postalCode || '';
-    countryInput.value    = lead.address?.country || '';
-    latInput.value        = lead.location?.lat ?? '';
-    lngInput.value        = lead.location?.lng ?? '';
-    notesInput.value      = lead.notes || '';
+    lastVisitInput.value = toDateTimeLocalValue(lead.lastVisitAt);
+    streetInput.value = lead.address?.street || '';
+    cityInput.value = lead.address?.city || '';
+    stateInput.value = lead.address?.state || '';
+    postalInput.value = lead.address?.postalCode || '';
+    countryInput.value = lead.address?.country || '';
+    latInput.value = lead.location?.lat ?? '';
+    lngInput.value = lead.location?.lng ?? '';
+    notesInput.value = lead.notes || '';
     updateMapSelectionStatus(Number(lead.location?.lat), Number(lead.location?.lng));
     setVisitSectionMode(isEditing);
     setLeadDetailsEditable(!isEditing, isEditing);
     hideVisitFormError();
     editingRouteSnapshot = {
-      rep: lead.assignedRep || '',
+      repId: lead.assignedRepId || '',
       date: lead.routePlan?.date || '',
       order: Number.isInteger(lead.routePlan?.order) ? lead.routePlan.order : null,
     };
+
     if (isEditing) {
       loadVisitHistory(lead._id).catch(() => {
         visitHistory = [];
@@ -828,15 +979,15 @@ function openModal(lead = null) {
     homeTypeInput.value = 'other';
     turfTypeInput.value = 'zip';
     turfLabelInput.value = '';
-    assignedRepInput.value = defaultPlannerRep;
-    routeDateFieldInput.value = defaultPlannerRep ? defaultPlannerDate : '';
+    populateLeadAssignmentControls({ teamId: defaultPlannerTeamId || '', repId: defaultPlannerRepId });
+    routeDateFieldInput.value = defaultPlannerRepId ? defaultPlannerDate : '';
     knockCountInput.value = '0';
     lastVisitInput.value = '';
     updateMapSelectionStatus(Number.NaN, Number.NaN);
     setVisitSectionMode(false);
     setLeadDetailsEditable(true, false);
     hideVisitFormError();
-    editingRouteSnapshot = { rep: '', date: '', order: null };
+    editingRouteSnapshot = { repId: '', date: '', order: null };
   }
 
   modalOverlay.classList.remove('hidden');
@@ -848,50 +999,65 @@ function closeModal() {
   updateMapSelectionStatus(getCoordinateInputValue(latInput), getCoordinateInputValue(lngInput));
 }
 
-function showFormError(msg) {
-  formError.textContent = msg;
-  formError.classList.remove('hidden');
+async function updateLeadRouteAssignment(leadId, assignment) {
+  await apiFetch(`${API}/${leadId}/route-plan`, {
+    method: 'PATCH',
+    body: JSON.stringify(assignment),
+  });
+  await loadLeads();
 }
 
-function hideFormError() {
-  formError.textContent = '';
-  formError.classList.add('hidden');
+async function savePlannerRouteOrder(orderedLeadIds) {
+  const rep = selectedPlannerRep();
+  if (!rep) return;
+
+  await apiFetch(`${API}/route-plan/reorder`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      assignedTeamId: rep.teamId || '',
+      assignedRepId: rep._id,
+      routeDate: selectedPlannerDate(),
+      orderedLeadIds,
+    }),
+  });
+  await loadLeads();
 }
 
-// ── Form submit ───────────────────────────────────────────────────────────────
-leadForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
+leadForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
   hideFormError();
 
   if (!leadDetailsEditable) {
     return;
   }
 
-  if ((assignedRepInput.value.trim() && !routeDateFieldInput.value) || (!assignedRepInput.value.trim() && routeDateFieldInput.value)) {
+  const selectedRep = selectedLeadRep();
+  const selectedTeamId = selectedRep?.teamId || selectedLeadTeamId() || '';
+
+  if ((selectedRep && !routeDateFieldInput.value) || (!selectedRep && routeDateFieldInput.value)) {
     showFormError('Assigned rep and route date must both be set together.');
     return;
   }
 
-  const nextAssignedRep = assignedRepInput.value.trim();
-  const nextRouteDate = routeDateFieldInput.value || '';
-  const preservedRouteOrder = nextAssignedRep === editingRouteSnapshot.rep && nextRouteDate === editingRouteSnapshot.date
+  const preservedRouteOrder = selectedLeadRepId() === editingRouteSnapshot.repId && routeDateFieldInput.value === editingRouteSnapshot.date
     ? editingRouteSnapshot.order
     : null;
 
   const payload = {
-    name:    nameInput.value.trim(),
+    name: nameInput.value.trim(),
     company: companyInput.value.trim(),
-    email:   emailInput.value.trim(),
-    phone:   phoneInput.value.trim(),
-    status:  statusInput.value,
+    email: emailInput.value.trim(),
+    phone: phoneInput.value.trim(),
+    status: statusInput.value,
     homeType: homeTypeInput.value,
     turf: {
       type: turfTypeInput.value,
       label: turfLabelInput.value.trim(),
     },
-    assignedRep: nextAssignedRep,
+    assignedTeamId: selectedTeamId || null,
+    assignedRepId: selectedRep?._id || null,
     routePlan: {
-      date: nextRouteDate || null,
+      date: routeDateFieldInput.value || null,
       order: preservedRouteOrder,
     },
     knockCount: Number(knockCountInput.value || 0),
@@ -907,7 +1073,7 @@ leadForm.addEventListener('submit', async (e) => {
       lat: latInput.value === '' ? null : Number(latInput.value),
       lng: lngInput.value === '' ? null : Number(lngInput.value),
     },
-    notes:   notesInput.value.trim(),
+    notes: notesInput.value.trim(),
   };
 
   const id = leadIdInput.value;
@@ -919,14 +1085,14 @@ leadForm.addEventListener('submit', async (e) => {
       await apiFetch(API, { method: 'POST', body: JSON.stringify(payload) });
     }
     closeModal();
-    loadLeads();
-  } catch (err) {
-    showFormError(err.message);
+    await loadLeads();
+  } catch (error) {
+    showFormError(error.message);
   }
 });
 
-visitForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
+visitForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
   hideVisitFormError();
 
   const leadId = leadIdInput.value;
@@ -949,19 +1115,58 @@ visitForm.addEventListener('submit', async (e) => {
     statusInput.value = result.lead.status;
     knockCountInput.value = String(result.lead.knockCount);
     lastVisitInput.value = toDateTimeLocalValue(result.lead.lastVisitAt);
-
     visitNotesInput.value = '';
     visitDispositionReasonInput.value = '';
     visitNextFollowUpInput.value = '';
 
     await loadVisitHistory(leadId);
     await loadLeads();
-  } catch (err) {
-    showVisitFormError(err.message);
+  } catch (error) {
+    showVisitFormError(error.message);
   }
 });
 
-// ── Delete flow ───────────────────────────────────────────────────────────────
+teamForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  hideInlineError(teamFormError);
+
+  try {
+    await apiFetch(TEAM_API, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: teamNameInput.value.trim(),
+        notes: teamNotesInput.value.trim(),
+      }),
+    });
+    teamForm.reset();
+    await loadRosterData();
+  } catch (error) {
+    showInlineError(teamFormError, error.message);
+  }
+});
+
+repForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  hideInlineError(repFormError);
+
+  try {
+    await apiFetch(REP_API, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: repNameInput.value.trim(),
+        email: repEmailInput.value.trim(),
+        phone: repPhoneInput.value.trim(),
+        teamId: repTeamSelect.value || null,
+      }),
+    });
+    repForm.reset();
+    repTeamSelect.value = '';
+    await loadRosterData();
+  } catch (error) {
+    showInlineError(repFormError, error.message);
+  }
+});
+
 function openConfirm(id) {
   pendingDeleteId = id;
   confirmOverlay.classList.remove('hidden');
@@ -974,74 +1179,87 @@ function closeConfirm() {
 
 btnConfirmDel.addEventListener('click', async () => {
   if (!pendingDeleteId) return;
+
   try {
     await apiFetch(`${API}/${pendingDeleteId}`, { method: 'DELETE' });
     closeConfirm();
-    loadLeads();
-  } catch (err) {
-    alert(err.message);
+    await loadLeads();
+  } catch (error) {
+    alert(error.message);
   }
 });
 
-// ── Event delegation for table buttons ───────────────────────────────────────
-tableBody.addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-id]');
-  if (!btn) return;
-  const id = btn.dataset.id;
+tableBody.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-id]');
+  if (!button) return;
+  const id = button.dataset.id;
 
-  if (btn.classList.contains('btn-zoom-address')) {
+  if (button.classList.contains('btn-zoom-address')) {
     const lead = leadsCache.find((item) => item._id === id) || await apiFetch(`${API}/${id}`);
     await focusMapOnLeadAddress(lead);
-  } else if (btn.classList.contains('btn-edit')) {
+  } else if (button.classList.contains('btn-edit')) {
     const lead = await apiFetch(`${API}/${id}`);
     openModal(lead);
-  } else if (btn.classList.contains('btn-delete')) {
+  } else if (button.classList.contains('btn-delete')) {
     openConfirm(id);
   }
 });
 
-document.addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-map-edit-id]');
-  if (!btn) return;
-  const lead = await apiFetch(`${API}/${btn.dataset.mapEditId}`);
+document.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-map-edit-id]');
+  if (!button) return;
+  const lead = await apiFetch(`${API}/${button.dataset.mapEditId}`);
   openModal(lead);
 });
 
-document.addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-map-visit-id]');
-  if (!btn) return;
-
-  const lead = await apiFetch(`${API}/${btn.dataset.mapVisitId}`);
+document.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-map-visit-id]');
+  if (!button) return;
+  const lead = await apiFetch(`${API}/${button.dataset.mapVisitId}`);
   openModal(lead);
-
-  // Bring the rep straight to the visit workflow while lead details stay locked.
   visitLogSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   visitOutcomeInput.focus();
 });
 
-turfGroupsList.addEventListener('click', async (e) => {
-  const addButton = e.target.closest('[data-route-add-id]');
-  const removeButton = e.target.closest('[data-route-remove-id]');
-
-  if (!addButton && !removeButton) {
-    return;
-  }
+turfGroupsList.addEventListener('click', async (event) => {
+  const addButton = event.target.closest('[data-route-add-id]');
+  const removeButton = event.target.closest('[data-route-remove-id]');
+  if (!addButton && !removeButton) return;
 
   if (addButton) {
-    await updateLeadRouteAssignment(addButton.dataset.routeAddId, selectedPlannerRep(), selectedPlannerDate(), null);
+    const rep = selectedPlannerRep();
+    if (!rep) return;
+    await updateLeadRouteAssignment(addButton.dataset.routeAddId, {
+      assignedTeamId: rep.teamId || '',
+      assignedRepId: rep._id,
+      routeDate: selectedPlannerDate(),
+      routeOrder: null,
+    });
     return;
   }
 
-  await updateLeadRouteAssignment(removeButton.dataset.routeRemoveId, '', '', null);
+  const lead = leadsCache.find((item) => item._id === removeButton.dataset.routeRemoveId);
+  await updateLeadRouteAssignment(removeButton.dataset.routeRemoveId, {
+    assignedTeamId: lead?.assignedTeamId || '',
+    assignedRepId: null,
+    routeDate: '',
+    routeOrder: null,
+  });
 });
 
-routeStopsList.addEventListener('click', async (e) => {
-  const moveUpButton = e.target.closest('[data-route-move-up-id]');
-  const moveDownButton = e.target.closest('[data-route-move-down-id]');
-  const removeButton = e.target.closest('[data-route-remove-id]');
+routeStopsList.addEventListener('click', async (event) => {
+  const moveUpButton = event.target.closest('[data-route-move-up-id]');
+  const moveDownButton = event.target.closest('[data-route-move-down-id]');
+  const removeButton = event.target.closest('[data-route-remove-id]');
 
   if (removeButton) {
-    await updateLeadRouteAssignment(removeButton.dataset.routeRemoveId, '', '', null);
+    const lead = leadsCache.find((item) => item._id === removeButton.dataset.routeRemoveId);
+    await updateLeadRouteAssignment(removeButton.dataset.routeRemoveId, {
+      assignedTeamId: lead?.assignedTeamId || '',
+      assignedRepId: null,
+      routeDate: '',
+      routeOrder: null,
+    });
     return;
   }
 
@@ -1065,27 +1283,47 @@ routeStopsList.addEventListener('click', async (e) => {
   }
 });
 
-// ── Toolbar event listeners ───────────────────────────────────────────────────
 searchInput.addEventListener('input', () => {
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(loadLeads, 300);
 });
 
 statusFilter.addEventListener('change', loadLeads);
-plannerRepInput.addEventListener('input', () => renderRoutePlanner(leadsCache));
+plannerTeamSelect.addEventListener('change', () => {
+  const currentRep = selectedPlannerRep();
+  syncRosterSelectors();
+  if (currentRep && currentRep.teamId === plannerTeamSelect.value) {
+    plannerRepSelect.value = currentRep._id;
+  }
+  renderRoutePlanner(leadsCache);
+});
+plannerRepSelect.addEventListener('change', () => {
+  const rep = selectedPlannerRep();
+  if (rep?.teamId && plannerTeamSelect.value !== rep.teamId) {
+    plannerTeamSelect.value = rep.teamId;
+    syncRosterSelectors();
+    plannerRepSelect.value = rep._id;
+  }
+  renderRoutePlanner(leadsCache);
+});
 plannerDateInput.addEventListener('change', () => renderRoutePlanner(leadsCache));
+assignedTeamInput.addEventListener('change', () => applyLeadTeamFilter());
+assignedRepInput.addEventListener('change', () => {
+  const rep = selectedLeadRep();
+  if (rep?.teamId && assignedTeamInput.value !== rep.teamId) {
+    assignedTeamInput.value = rep.teamId;
+    applyLeadTeamFilter(rep._id);
+  }
+});
 latInput.addEventListener('input', () => updateMapSelectionStatus(getCoordinateInputValue(latInput), getCoordinateInputValue(lngInput)));
 lngInput.addEventListener('input', () => updateMapSelectionStatus(getCoordinateInputValue(latInput), getCoordinateInputValue(lngInput)));
-mapAddModeButton.addEventListener('click', () => {
-  setMapAddMode(!mapAddModeEnabled);
-});
+mapAddModeButton.addEventListener('click', () => setMapAddMode(!mapAddModeEnabled));
 enableLeadEditButton.addEventListener('click', () => {
   setLeadDetailsEditable(true, true);
   nameInput.focus();
 });
-mapSearchForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-
+mapSearchForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
   const query = mapSearchInput.value.trim();
   if (!query) {
     setMapSearchFeedback('Enter an address, city, ZIP, or neighborhood to jump the map.');
@@ -1094,17 +1332,14 @@ mapSearchForm.addEventListener('submit', async (e) => {
 
   try {
     setMapSearchFeedback(`Searching for: ${query}`);
-    const result = await apiFetch(`${'/api/geocode/search'}?q=${encodeURIComponent(query)}`);
+    const result = await apiFetch(`/api/geocode/search?q=${encodeURIComponent(query)}`);
     focusMapOnSearchResult(result);
   } catch (error) {
     setMapSearchFeedback(error.message);
   }
 });
 currentLocationButton.addEventListener('click', () => {
-  if (locatingUser) {
-    return;
-  }
-
+  if (locatingUser) return;
   if (!navigator.geolocation) {
     setMapSearchFeedback('Geolocation is not supported by this browser.');
     return;
@@ -1134,19 +1369,22 @@ currentLocationButton.addEventListener('click', () => {
   );
 });
 
-// ── Modal open/close wiring ───────────────────────────────────────────────────
 document.getElementById('btn-open-modal').addEventListener('click', () => openModal());
 document.getElementById('btn-close-modal').addEventListener('click', closeModal);
 document.getElementById('btn-cancel').addEventListener('click', closeModal);
 document.getElementById('btn-close-confirm').addEventListener('click', closeConfirm);
 document.getElementById('btn-cancel-delete').addEventListener('click', closeConfirm);
+modalOverlay.addEventListener('click', (event) => { if (event.target === modalOverlay) closeModal(); });
+confirmOverlay.addEventListener('click', (event) => { if (event.target === confirmOverlay) closeConfirm(); });
 
-// Close overlays on backdrop click
-modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
-confirmOverlay.addEventListener('click', (e) => { if (e.target === confirmOverlay) closeConfirm(); });
+async function initializeApp() {
+  plannerDateInput.value = new Date().toISOString().slice(0, 10);
+  initializeMap();
+  syncMapAddModeUi();
+  await loadRosterData();
+  await loadLeads();
+}
 
-// ── Init ──────────────────────────────────────────────────────────────────────
-plannerDateInput.value = new Date().toISOString().slice(0, 10);
-initializeMap();
-syncMapAddModeUi();
-loadLeads();
+initializeApp().catch((error) => {
+  setMapSearchFeedback(error.message || 'App failed to initialize.');
+});

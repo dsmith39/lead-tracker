@@ -68,6 +68,21 @@ const leadSchema = new mongoose.Schema(
         trim: true,
       },
     },
+    assignedTeamId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Team',
+      default: null,
+    },
+    assignedTeamName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    assignedRepId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Rep',
+      default: null,
+    },
     assignedRep: {
       type: String,
       trim: true,

@@ -2,12 +2,18 @@ const express = require('express');
 const router = express.Router();
 const Lead = require('../models/Lead');
 const Visit = require('../models/Visit');
+const Team = require('../models/Team');
+const Rep = require('../models/Rep');
 
 const TURF_TYPES = new Set(['neighborhood', 'zip', 'grid']);
 const ROUTE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function trimString(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function normalizeRouteDate(value) {
@@ -71,7 +77,47 @@ function buildDerivedTurfLabel(type, address = {}, location = {}) {
   return buildGridLabel(location);
 }
 
-function normalizeLeadPayload(body = {}) {
+async function resolveAssignment(body = {}) {
+  const requestedTeamId = trimString(body.assignedTeamId || body.assignedTeam?._id || body.assignedTeam?.teamId);
+  const requestedRepId = trimString(body.assignedRepId || body.assignedRep?._id || body.assignedRep?.repId);
+  const legacyAssignedRepName = trimString(typeof body.assignedRep === 'string' ? body.assignedRep : body.assignedRep?.name);
+
+  let resolvedTeam = null;
+  let resolvedRep = null;
+
+  if (requestedTeamId) {
+    resolvedTeam = await Team.findById(requestedTeamId);
+    if (!resolvedTeam) {
+      throw new Error('Selected team was not found');
+    }
+  }
+
+  if (requestedRepId) {
+    resolvedRep = await Rep.findById(requestedRepId).populate('teamId', 'name');
+    if (!resolvedRep) {
+      throw new Error('Selected rep was not found');
+    }
+    if (!resolvedRep.active) {
+      throw new Error('Selected rep is inactive');
+    }
+  }
+
+  if (resolvedRep?.teamId) {
+    if (resolvedTeam && String(resolvedTeam._id) !== String(resolvedRep.teamId._id)) {
+      throw new Error('Selected rep does not belong to the selected team');
+    }
+    resolvedTeam = resolvedRep.teamId;
+  }
+
+  return {
+    assignedTeamId: resolvedTeam?._id || null,
+    assignedTeamName: resolvedTeam?.name || '',
+    assignedRepId: resolvedRep?._id || null,
+    assignedRepName: resolvedRep?.name || legacyAssignedRepName,
+  };
+}
+
+async function normalizeLeadPayload(body = {}) {
   const address = {
     street: trimString(body.address?.street),
     city: trimString(body.address?.city),
@@ -87,7 +133,7 @@ function normalizeLeadPayload(body = {}) {
 
   const turfType = TURF_TYPES.has(body.turf?.type) ? body.turf.type : 'zip';
   const turfLabel = trimString(body.turf?.label) || buildDerivedTurfLabel(turfType, address, location);
-  const assignedRep = trimString(body.assignedRep);
+  const assignment = await resolveAssignment(body);
   const routeDate = normalizeRouteDate(body.routePlan?.date);
   const routeOrder = normalizeRouteOrder(body.routePlan?.order);
 
@@ -103,10 +149,13 @@ function normalizeLeadPayload(body = {}) {
       type: turfType,
       label: turfLabel,
     },
-    assignedRep,
+    assignedTeamId: assignment.assignedTeamId,
+    assignedTeamName: assignment.assignedTeamName,
+    assignedRepId: assignment.assignedRepId,
+    assignedRep: assignment.assignedRepName,
     routePlan: {
-      date: assignedRep && routeDate ? routeDate : null,
-      order: assignedRep && routeDate ? routeOrder : null,
+      date: assignment.assignedRepName && routeDate ? routeDate : null,
+      order: assignment.assignedRepName && routeDate ? routeOrder : null,
     },
     status: body.status,
     knockCount: body.knockCount,
@@ -115,19 +164,37 @@ function normalizeLeadPayload(body = {}) {
   };
 }
 
-async function normalizeRouteOrders(assignedRep, routeDate) {
-  const repName = trimString(assignedRep);
+function buildRepRouteFilter(assignedRepId, assignedRepName, routeDate) {
   const normalizedRouteDate = trimString(routeDate);
+  if (!normalizedRouteDate) {
+    return null;
+  }
 
-  if (!repName || !normalizedRouteDate) {
+  if (assignedRepId) {
+    return {
+      assignedRepId,
+      'routePlan.date': normalizedRouteDate,
+    };
+  }
+
+  const repName = trimString(assignedRepName);
+  if (!repName) {
+    return null;
+  }
+
+  return {
+    assignedRep: repName,
+    'routePlan.date': normalizedRouteDate,
+  };
+}
+
+async function normalizeRouteOrders({ assignedRepId = null, assignedRepName = '', routeDate = null }) {
+  const routeFilter = buildRepRouteFilter(assignedRepId, assignedRepName, routeDate);
+  if (!routeFilter) {
     return;
   }
 
-  const routeLeads = await Lead.find({
-    assignedRep: repName,
-    'routePlan.date': normalizedRouteDate,
-  });
-
+  const routeLeads = await Lead.find(routeFilter);
   routeLeads.sort((left, right) => {
     const leftOrder = Number.isInteger(left.routePlan?.order) ? left.routePlan.order : Number.MAX_SAFE_INTEGER;
     const rightOrder = Number.isInteger(right.routePlan?.order) ? right.routePlan.order : Number.MAX_SAFE_INTEGER;
@@ -145,8 +212,6 @@ async function normalizeRouteOrders(assignedRep, routeDate) {
         { _id: lead._id },
         {
           $set: {
-            assignedRep: repName,
-            'routePlan.date': normalizedRouteDate,
             'routePlan.order': index + 1,
           },
         }
@@ -155,19 +220,30 @@ async function normalizeRouteOrders(assignedRep, routeDate) {
   );
 }
 
+function routeContextFromLead(lead) {
+  return {
+    assignedRepId: lead.assignedRepId || null,
+    assignedRepName: lead.assignedRep || '',
+    routeDate: lead.routePlan?.date || null,
+  };
+}
+
 // GET all leads (with optional search/filter)
 router.get('/', async (req, res) => {
   try {
-    const { search, status, assignedRep, routeDate, turfType, turfLabel } = req.query;
+    const { search, status, assignedRepId, assignedTeamId, routeDate, turfType, turfLabel } = req.query;
     const filter = {};
 
     if (status && status !== 'all') {
       filter.status = status;
     }
 
-    const repName = trimString(assignedRep);
-    if (repName) {
-      filter.assignedRep = repName;
+    if (assignedRepId) {
+      filter.assignedRepId = assignedRepId;
+    }
+
+    if (assignedTeamId) {
+      filter.assignedTeamId = assignedTeamId;
     }
 
     const normalizedRouteDate = trimString(routeDate);
@@ -180,11 +256,11 @@ router.get('/', async (req, res) => {
     }
 
     if (turfLabel) {
-      filter['turf.label'] = new RegExp(turfLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter['turf.label'] = new RegExp(escapeRegex(turfLabel), 'i');
     }
 
     if (search) {
-      const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      const regex = new RegExp(escapeRegex(search), 'i');
       filter.$or = [
         { name: regex },
         { email: regex },
@@ -196,6 +272,7 @@ router.get('/', async (req, res) => {
         { 'address.postalCode': regex },
         { 'turf.label': regex },
         { assignedRep: regex },
+        { assignedTeamName: regex },
       ];
     }
 
@@ -212,32 +289,34 @@ router.patch('/:id/route-plan', async (req, res) => {
     const lead = await Lead.findById(req.params.id);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
-    const previousRep = lead.assignedRep;
-    const previousRouteDate = lead.routePlan?.date || null;
-    const assignedRep = trimString(req.body.assignedRep);
+    const previousRouteContext = routeContextFromLead(lead);
     const routeDate = normalizeRouteDate(req.body.routeDate);
     const routeOrder = normalizeRouteOrder(req.body.routeOrder);
+    const assignment = await resolveAssignment(req.body);
 
-    if ((assignedRep && !routeDate) || (!assignedRep && routeDate)) {
+    if ((assignment.assignedRepName && !routeDate) || (!assignment.assignedRepName && routeDate)) {
       return res.status(400).json({ error: 'Rep and route date must be provided together' });
     }
 
-    if (!assignedRep && !routeDate) {
-      lead.assignedRep = '';
+    lead.assignedTeamId = assignment.assignedTeamId;
+    lead.assignedTeamName = assignment.assignedTeamName;
+    lead.assignedRepId = assignment.assignedRepId;
+    lead.assignedRep = assignment.assignedRepName;
+
+    if (!assignment.assignedRepName && !routeDate) {
       lead.routePlan = { date: null, order: null };
     } else {
       let nextOrder = routeOrder;
 
       if (nextOrder === null) {
+        const routeFilter = buildRepRouteFilter(assignment.assignedRepId, assignment.assignedRepName, routeDate);
         const existingCount = await Lead.countDocuments({
+          ...routeFilter,
           _id: { $ne: lead._id },
-          assignedRep,
-          'routePlan.date': routeDate,
         });
         nextOrder = existingCount + 1;
       }
 
-      lead.assignedRep = assignedRep;
       lead.routePlan = {
         date: routeDate,
         order: nextOrder,
@@ -245,13 +324,20 @@ router.patch('/:id/route-plan', async (req, res) => {
     }
 
     await lead.save();
-    await normalizeRouteOrders(previousRep, previousRouteDate);
-    await normalizeRouteOrders(lead.assignedRep, lead.routePlan?.date);
+    await normalizeRouteOrders(previousRouteContext);
+    await normalizeRouteOrders(routeContextFromLead(lead));
 
     const refreshedLead = await Lead.findById(lead._id);
     res.json(refreshedLead);
   } catch (err) {
-    if (err.message === 'Route date must be in YYYY-MM-DD format' || err.message === 'Route order must be a positive integer') {
+    if (
+      err.message === 'Route date must be in YYYY-MM-DD format'
+      || err.message === 'Route order must be a positive integer'
+      || err.message === 'Selected team was not found'
+      || err.message === 'Selected rep was not found'
+      || err.message === 'Selected rep is inactive'
+      || err.message === 'Selected rep does not belong to the selected team'
+    ) {
       return res.status(400).json({ error: err.message });
     }
     res.status(400).json({ error: 'Invalid route assignment' });
@@ -261,19 +347,16 @@ router.patch('/:id/route-plan', async (req, res) => {
 // PATCH reorder all route stops for a rep/day
 router.patch('/route-plan/reorder', async (req, res) => {
   try {
-    const assignedRep = trimString(req.body.assignedRep);
     const routeDate = normalizeRouteDate(req.body.routeDate);
+    const assignment = await resolveAssignment(req.body);
     const orderedLeadIds = Array.isArray(req.body.orderedLeadIds) ? req.body.orderedLeadIds.map(String) : [];
 
-    if (!assignedRep || !routeDate) {
+    if (!assignment.assignedRepName || !routeDate) {
       return res.status(400).json({ error: 'Rep and route date are required to reorder a route' });
     }
 
-    const routeLeads = await Lead.find({
-      assignedRep,
-      'routePlan.date': routeDate,
-    });
-
+    const routeFilter = buildRepRouteFilter(assignment.assignedRepId, assignment.assignedRepName, routeDate);
+    const routeLeads = await Lead.find(routeFilter);
     const routeLeadMap = new Map(routeLeads.map((lead) => [String(lead._id), lead]));
     const orderedLeads = [];
 
@@ -299,7 +382,10 @@ router.patch('/route-plan/reorder', async (req, res) => {
           { _id: lead._id },
           {
             $set: {
-              assignedRep,
+              assignedTeamId: assignment.assignedTeamId,
+              assignedTeamName: assignment.assignedTeamName,
+              assignedRepId: assignment.assignedRepId,
+              assignedRep: assignment.assignedRepName,
               'routePlan.date': routeDate,
               'routePlan.order': index + 1,
             },
@@ -308,14 +394,16 @@ router.patch('/route-plan/reorder', async (req, res) => {
       )
     );
 
-    const refreshedRoute = await Lead.find({
-      assignedRep,
-      'routePlan.date': routeDate,
-    }).sort({ 'routePlan.order': 1, createdAt: 1 });
-
+    const refreshedRoute = await Lead.find(routeFilter).sort({ 'routePlan.order': 1, createdAt: 1 });
     res.json(refreshedRoute);
   } catch (err) {
-    if (err.message === 'Route date must be in YYYY-MM-DD format') {
+    if (
+      err.message === 'Route date must be in YYYY-MM-DD format'
+      || err.message === 'Selected team was not found'
+      || err.message === 'Selected rep was not found'
+      || err.message === 'Selected rep is inactive'
+      || err.message === 'Selected rep does not belong to the selected team'
+    ) {
       return res.status(400).json({ error: err.message });
     }
     res.status(400).json({ error: 'Could not reorder route' });
@@ -369,7 +457,7 @@ router.post('/:id/visits', async (req, res) => {
     res.status(201).json({ visit, lead });
   } catch (err) {
     if (err.name === 'ValidationError') {
-      const messages = Object.values(err.errors).map((e) => e.message);
+      const messages = Object.values(err.errors).map((error) => error.message);
       return res.status(400).json({ error: messages.join(', ') });
     }
     res.status(500).json({ error: 'Server error' });
@@ -379,15 +467,22 @@ router.post('/:id/visits', async (req, res) => {
 // POST create lead
 router.post('/', async (req, res) => {
   try {
-    const lead = await Lead.create(normalizeLeadPayload(req.body));
-    await normalizeRouteOrders(lead.assignedRep, lead.routePlan?.date);
+    const lead = await Lead.create(await normalizeLeadPayload(req.body));
+    await normalizeRouteOrders(routeContextFromLead(lead));
     res.status(201).json(lead);
   } catch (err) {
-    if (err.message === 'Route date must be in YYYY-MM-DD format' || err.message === 'Route order must be a positive integer') {
+    if (
+      err.message === 'Route date must be in YYYY-MM-DD format'
+      || err.message === 'Route order must be a positive integer'
+      || err.message === 'Selected team was not found'
+      || err.message === 'Selected rep was not found'
+      || err.message === 'Selected rep is inactive'
+      || err.message === 'Selected rep does not belong to the selected team'
+    ) {
       return res.status(400).json({ error: err.message });
     }
     if (err.name === 'ValidationError') {
-      const messages = Object.values(err.errors).map((e) => e.message);
+      const messages = Object.values(err.errors).map((error) => error.message);
       return res.status(400).json({ error: messages.join(', ') });
     }
     res.status(500).json({ error: 'Server error' });
@@ -400,22 +495,28 @@ router.put('/:id', async (req, res) => {
     const existingLead = await Lead.findById(req.params.id);
     if (!existingLead) return res.status(404).json({ error: 'Lead not found' });
 
-    const previousRep = existingLead.assignedRep;
-    const previousRouteDate = existingLead.routePlan?.date || null;
-    const lead = await Lead.findByIdAndUpdate(req.params.id, normalizeLeadPayload(req.body), {
+    const previousRouteContext = routeContextFromLead(existingLead);
+    const lead = await Lead.findByIdAndUpdate(req.params.id, await normalizeLeadPayload(req.body), {
       new: true,
       runValidators: true,
     });
 
-    await normalizeRouteOrders(previousRep, previousRouteDate);
-    await normalizeRouteOrders(lead.assignedRep, lead.routePlan?.date);
+    await normalizeRouteOrders(previousRouteContext);
+    await normalizeRouteOrders(routeContextFromLead(lead));
     res.json(lead);
   } catch (err) {
-    if (err.message === 'Route date must be in YYYY-MM-DD format' || err.message === 'Route order must be a positive integer') {
+    if (
+      err.message === 'Route date must be in YYYY-MM-DD format'
+      || err.message === 'Route order must be a positive integer'
+      || err.message === 'Selected team was not found'
+      || err.message === 'Selected rep was not found'
+      || err.message === 'Selected rep is inactive'
+      || err.message === 'Selected rep does not belong to the selected team'
+    ) {
       return res.status(400).json({ error: err.message });
     }
     if (err.name === 'ValidationError') {
-      const messages = Object.values(err.errors).map((e) => e.message);
+      const messages = Object.values(err.errors).map((error) => error.message);
       return res.status(400).json({ error: messages.join(', ') });
     }
     res.status(400).json({ error: 'Invalid ID or data' });
@@ -428,7 +529,7 @@ router.delete('/:id', async (req, res) => {
     const lead = await Lead.findByIdAndDelete(req.params.id);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
     await Visit.deleteMany({ lead: lead._id });
-    await normalizeRouteOrders(lead.assignedRep, lead.routePlan?.date);
+    await normalizeRouteOrders(routeContextFromLead(lead));
     res.json({ message: 'Lead deleted' });
   } catch (err) {
     res.status(400).json({ error: 'Invalid ID' });
