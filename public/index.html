@@ -12,7 +12,14 @@
   <header>
     <div class="header-inner">
       <h1>Lead Tracker</h1>
-      <button id="btn-open-modal" class="btn btn-primary">+ Add Lead</button>
+      <div class="header-right">
+        <div id="session-bar" class="session-bar" aria-live="polite">
+          <span id="session-org" class="session-org"></span>
+          <span id="session-role" class="session-role hidden"></span>
+          <span id="session-user" class="session-user"></span>
+        </div>
+        <button id="btn-open-modal" class="btn btn-primary">+ Add Lead</button>
+      </div>
     </div>
   </header>
 

@@ -4,6 +4,7 @@
 const API = '/api/leads';
 const TEAM_API = '/api/teams';
 const REP_API = '/api/reps';
+const SESSION_API = '/api/session';
 const DEFAULT_MAP_CENTER = [39.8283, -98.5795];
 const DEFAULT_MAP_ZOOM = 4;
 
@@ -101,6 +102,8 @@ let locatingUser = false;
 let visitHistory = [];
 let leadDetailsEditable = true;
 let editingRouteSnapshot = { repId: '', date: '', order: null };
+let sessionContext = null;
+let isManagerRole = true; // default true until session resolves
 
 async function apiFetch(url, options = {}) {
   const res = await fetch(url, {
@@ -871,7 +874,7 @@ function renderRow(lead) {
     <td>
       <div class="action-btns">
         <button class="btn-icon-sm btn-edit" data-id="${lead._id}">Edit</button>
-        <button class="btn-icon-sm btn-delete" data-id="${lead._id}">Delete</button>
+        <button class="btn-icon-sm btn-delete${isManagerRole ? '' : ' hidden'}" data-id="${lead._id}">Delete</button>
       </div>
     </td>`;
   return tr;
@@ -1377,10 +1380,43 @@ document.getElementById('btn-cancel-delete').addEventListener('click', closeConf
 modalOverlay.addEventListener('click', (event) => { if (event.target === modalOverlay) closeModal(); });
 confirmOverlay.addEventListener('click', (event) => { if (event.target === confirmOverlay) closeConfirm(); });
 
+async function loadSession() {
+  try {
+    const data = await apiFetch(`${SESSION_API}/me`);
+    sessionContext = data;
+
+    const orgEl = document.getElementById('session-org');
+    const roleEl = document.getElementById('session-role');
+    const userEl = document.getElementById('session-user');
+    if (orgEl) orgEl.textContent = data.organization?.slug ?? '';
+    if (roleEl) {
+      roleEl.textContent = data.role ?? '';
+      roleEl.className = `session-role role-${data.role ?? 'canvasser'}`;
+    }
+    if (userEl) userEl.textContent = data.user?.email ?? '';
+
+    applyRoleGating(data.role ?? 'canvasser');
+  } catch {
+    // Degrade gracefully — session bar stays empty, no restrictions enforced
+  }
+}
+
+function applyRoleGating(role) {
+  const ROLE_WEIGHT = { canvasser: 10, manager: 20, admin: 30, owner: 40 };
+  isManagerRole = (ROLE_WEIGHT[role] ?? 10) >= 20;
+
+  // Static UI elements
+  document.getElementById('btn-open-modal').classList.toggle('hidden', !isManagerRole);
+  document.getElementById('btn-enable-lead-edit').classList.toggle('hidden', !isManagerRole);
+  document.getElementById('team-form').classList.toggle('hidden', !isManagerRole);
+  document.getElementById('rep-form').classList.toggle('hidden', !isManagerRole);
+}
+
 async function initializeApp() {
   plannerDateInput.value = new Date().toISOString().slice(0, 10);
   initializeMap();
   syncMapAddModeUi();
+  await loadSession();
   await loadRosterData();
   await loadLeads();
 }
