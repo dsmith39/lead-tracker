@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lead Tracker</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <h1>Lead Tracker</h1>
+      <button id="btn-open-modal" class="btn btn-primary">+ Add Lead</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Filters / Search bar -->
+    <div class="toolbar">
+      <input
+        type="text"
+        id="search-input"
+        placeholder="Search by name, email, or company…"
+        autocomplete="off"
+      />
+      <select id="status-filter">
+        <option value="all">All Statuses</option>
+        <option value="new">New</option>
+        <option value="contacted">Contacted</option>
+        <option value="qualified">Qualified</option>
+        <option value="proposal">Proposal</option>
+        <option value="closed-won">Closed Won</option>
+        <option value="closed-lost">Closed Lost</option>
+      </select>
+    </div>
+
+    <!-- Stats bar -->
+    <div class="stats" id="stats-bar"></div>
+
+    <!-- Leads table -->
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Company</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>Status</th>
+            <th>Added</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="leads-table-body">
+          <tr id="empty-row">
+            <td colspan="7" class="empty-message">No leads found.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- Add / Edit Modal -->
+  <div id="modal-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modal-title">Add Lead</h2>
+        <button id="btn-close-modal" class="btn-icon" aria-label="Close">&times;</button>
+      </div>
+
+      <form id="lead-form" novalidate>
+        <input type="hidden" id="lead-id" />
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="input-name">Name <span class="required">*</span></label>
+            <input type="text" id="input-name" placeholder="Jane Smith" required />
+          </div>
+
+          <div class="form-group">
+            <label for="input-company">Company</label>
+            <input type="text" id="input-company" placeholder="Acme Corp" />
+          </div>
+
+          <div class="form-group">
+            <label for="input-email">Email</label>
+            <input type="email" id="input-email" placeholder="jane@example.com" />
+          </div>
+
+          <div class="form-group">
+            <label for="input-phone">Phone</label>
+            <input type="tel" id="input-phone" placeholder="+1 555 000 0000" />
+          </div>
+
+          <div class="form-group">
+            <label for="input-status">Status</label>
+            <select id="input-status">
+              <option value="new">New</option>
+              <option value="contacted">Contacted</option>
+              <option value="qualified">Qualified</option>
+              <option value="proposal">Proposal</option>
+              <option value="closed-won">Closed Won</option>
+              <option value="closed-lost">Closed Lost</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group full-width">
+          <label for="input-notes">Notes</label>
+          <textarea id="input-notes" rows="3" placeholder="Any relevant notes…"></textarea>
+        </div>
+
+        <p id="form-error" class="form-error hidden"></p>
+
+        <div class="form-actions">
+          <button type="button" id="btn-cancel" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Lead</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Confirm Modal -->
+  <div id="confirm-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h2>Delete Lead</h2>
+        <button id="btn-close-confirm" class="btn-icon" aria-label="Close">&times;</button>
+      </div>
+      <p>Are you sure you want to delete this lead? This action cannot be undone.</p>
+      <div class="form-actions">
+        <button id="btn-cancel-delete" class="btn btn-secondary">Cancel</button>
+        <button id="btn-confirm-delete" class="btn btn-danger">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
