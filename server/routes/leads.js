@@ -16,11 +16,6 @@ function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function normalizeOrganizationId(value) {
-  const organizationId = trimString(value);
-  return organizationId || null;
-}
-
 function normalizeRouteDate(value) {
   const routeDate = trimString(value);
 
@@ -82,7 +77,7 @@ function buildDerivedTurfLabel(type, address = {}, location = {}) {
   return buildGridLabel(location);
 }
 
-async function resolveAssignment(body = {}) {
+async function resolveAssignment(body = {}, organizationId = null) {
   const requestedTeamId = trimString(body.assignedTeamId || body.assignedTeam?._id || body.assignedTeam?.teamId);
   const requestedRepId = trimString(body.assignedRepId || body.assignedRep?._id || body.assignedRep?.repId);
   const legacyAssignedRepName = trimString(typeof body.assignedRep === 'string' ? body.assignedRep : body.assignedRep?.name);
@@ -91,14 +86,22 @@ async function resolveAssignment(body = {}) {
   let resolvedRep = null;
 
   if (requestedTeamId) {
-    resolvedTeam = await Team.findById(requestedTeamId);
+    const teamFilter = { _id: requestedTeamId };
+    if (organizationId) {
+      teamFilter.organizationId = organizationId;
+    }
+    resolvedTeam = await Team.findOne(teamFilter);
     if (!resolvedTeam) {
       throw new Error('Selected team was not found');
     }
   }
 
   if (requestedRepId) {
-    resolvedRep = await Rep.findById(requestedRepId).populate('teamId', 'name');
+    const repFilter = { _id: requestedRepId };
+    if (organizationId) {
+      repFilter.organizationId = organizationId;
+    }
+    resolvedRep = await Rep.findOne(repFilter).populate('teamId', 'name organizationId');
     if (!resolvedRep) {
       throw new Error('Selected rep was not found');
     }
@@ -122,7 +125,7 @@ async function resolveAssignment(body = {}) {
   };
 }
 
-async function normalizeLeadPayload(body = {}) {
+async function normalizeLeadPayload(body = {}, organizationId) {
   const address = {
     street: trimString(body.address?.street),
     city: trimString(body.address?.city),
@@ -138,12 +141,12 @@ async function normalizeLeadPayload(body = {}) {
 
   const turfType = TURF_TYPES.has(body.turf?.type) ? body.turf.type : 'zip';
   const turfLabel = trimString(body.turf?.label) || buildDerivedTurfLabel(turfType, address, location);
-  const assignment = await resolveAssignment(body);
+  const assignment = await resolveAssignment(body, organizationId);
   const routeDate = normalizeRouteDate(body.routePlan?.date);
   const routeOrder = normalizeRouteOrder(body.routePlan?.order);
 
   return {
-    organizationId: normalizeOrganizationId(body.organizationId),
+    organizationId,
     name: trimString(body.name),
     email: trimString(body.email),
     phone: trimString(body.phone),
@@ -246,13 +249,10 @@ function routeContextFromLead(lead) {
 // GET all leads (with optional search/filter)
 router.get('/', async (req, res) => {
   try {
-    const { search, status, assignedRepId, assignedTeamId, routeDate, turfType, turfLabel, organizationId } = req.query;
-    const filter = {};
-
-    const normalizedOrganizationId = normalizeOrganizationId(organizationId);
-    if (normalizedOrganizationId) {
-      filter.organizationId = normalizedOrganizationId;
-    }
+    const { search, status, assignedRepId, assignedTeamId, routeDate, turfType, turfLabel } = req.query;
+    const filter = {
+      organizationId: req.tenant.organizationId,
+    };
 
     if (status && status !== 'all') {
       filter.status = status;
@@ -306,13 +306,13 @@ router.get('/', async (req, res) => {
 // PATCH assign/update a lead's route plan
 router.patch('/:id/route-plan', async (req, res) => {
   try {
-    const lead = await Lead.findById(req.params.id);
+    const lead = await Lead.findOne({ _id: req.params.id, organizationId: req.tenant.organizationId });
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
     const previousRouteContext = routeContextFromLead(lead);
     const routeDate = normalizeRouteDate(req.body.routeDate);
     const routeOrder = normalizeRouteOrder(req.body.routeOrder);
-    const assignment = await resolveAssignment(req.body);
+    const assignment = await resolveAssignment(req.body, req.tenant.organizationId);
 
     if ((assignment.assignedRepName && !routeDate) || (!assignment.assignedRepName && routeDate)) {
       return res.status(400).json({ error: 'Rep and route date must be provided together' });
@@ -333,7 +333,7 @@ router.patch('/:id/route-plan', async (req, res) => {
           assignment.assignedRepId,
           assignment.assignedRepName,
           routeDate,
-          lead.organizationId || normalizeOrganizationId(req.body.organizationId)
+          lead.organizationId
         );
         const existingCount = await Lead.countDocuments({
           ...routeFilter,
@@ -352,7 +352,7 @@ router.patch('/:id/route-plan', async (req, res) => {
     await normalizeRouteOrders(previousRouteContext);
     await normalizeRouteOrders(routeContextFromLead(lead));
 
-    const refreshedLead = await Lead.findById(lead._id);
+    const refreshedLead = await Lead.findOne({ _id: lead._id, organizationId: req.tenant.organizationId });
     res.json(refreshedLead);
   } catch (err) {
     if (
@@ -373,7 +373,7 @@ router.patch('/:id/route-plan', async (req, res) => {
 router.patch('/route-plan/reorder', async (req, res) => {
   try {
     const routeDate = normalizeRouteDate(req.body.routeDate);
-    const assignment = await resolveAssignment(req.body);
+    const assignment = await resolveAssignment(req.body, req.tenant.organizationId);
     const orderedLeadIds = Array.isArray(req.body.orderedLeadIds) ? req.body.orderedLeadIds.map(String) : [];
 
     if (!assignment.assignedRepName || !routeDate) {
@@ -384,7 +384,7 @@ router.patch('/route-plan/reorder', async (req, res) => {
       assignment.assignedRepId,
       assignment.assignedRepName,
       routeDate,
-      normalizeOrganizationId(req.body.organizationId)
+      req.tenant.organizationId
     );
     const routeLeads = await Lead.find(routeFilter);
     const routeLeadMap = new Map(routeLeads.map((lead) => [String(lead._id), lead]));
@@ -443,7 +443,7 @@ router.patch('/route-plan/reorder', async (req, res) => {
 // GET single lead
 router.get('/:id', async (req, res) => {
   try {
-    const lead = await Lead.findById(req.params.id);
+    const lead = await Lead.findOne({ _id: req.params.id, organizationId: req.tenant.organizationId });
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
     res.json(lead);
   } catch (err) {
@@ -454,10 +454,10 @@ router.get('/:id', async (req, res) => {
 // GET lead visit history
 router.get('/:id/visits', async (req, res) => {
   try {
-    const lead = await Lead.findById(req.params.id);
+    const lead = await Lead.findOne({ _id: req.params.id, organizationId: req.tenant.organizationId });
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
-    const visits = await Visit.find({ lead: lead._id }).sort({ visitAt: -1, createdAt: -1 });
+    const visits = await Visit.find({ lead: lead._id, organizationId: req.tenant.organizationId }).sort({ visitAt: -1, createdAt: -1 });
     res.json(visits);
   } catch (err) {
     res.status(400).json({ error: 'Invalid ID' });
@@ -467,11 +467,11 @@ router.get('/:id/visits', async (req, res) => {
 // POST create visit log entry for a lead
 router.post('/:id/visits', async (req, res) => {
   try {
-    const lead = await Lead.findById(req.params.id);
+    const lead = await Lead.findOne({ _id: req.params.id, organizationId: req.tenant.organizationId });
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
     const visit = await Visit.create({
-      organizationId: lead.organizationId || null,
+      organizationId: req.tenant.organizationId,
       lead: lead._id,
       outcome: req.body.outcome,
       notes: req.body.notes,
@@ -498,7 +498,7 @@ router.post('/:id/visits', async (req, res) => {
 // POST create lead
 router.post('/', async (req, res) => {
   try {
-    const lead = await Lead.create(await normalizeLeadPayload(req.body));
+    const lead = await Lead.create(await normalizeLeadPayload(req.body, req.tenant.organizationId));
     await normalizeRouteOrders(routeContextFromLead(lead));
     res.status(201).json(lead);
   } catch (err) {
@@ -523,14 +523,18 @@ router.post('/', async (req, res) => {
 // PUT update lead
 router.put('/:id', async (req, res) => {
   try {
-    const existingLead = await Lead.findById(req.params.id);
+    const existingLead = await Lead.findOne({ _id: req.params.id, organizationId: req.tenant.organizationId });
     if (!existingLead) return res.status(404).json({ error: 'Lead not found' });
 
     const previousRouteContext = routeContextFromLead(existingLead);
-    const lead = await Lead.findByIdAndUpdate(req.params.id, await normalizeLeadPayload(req.body), {
+    const lead = await Lead.findOneAndUpdate(
+      { _id: req.params.id, organizationId: req.tenant.organizationId },
+      await normalizeLeadPayload(req.body, req.tenant.organizationId),
+      {
       new: true,
       runValidators: true,
-    });
+      }
+    );
 
     await normalizeRouteOrders(previousRouteContext);
     await normalizeRouteOrders(routeContextFromLead(lead));
@@ -557,9 +561,9 @@ router.put('/:id', async (req, res) => {
 // DELETE lead
 router.delete('/:id', async (req, res) => {
   try {
-    const lead = await Lead.findByIdAndDelete(req.params.id);
+    const lead = await Lead.findOneAndDelete({ _id: req.params.id, organizationId: req.tenant.organizationId });
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
-    await Visit.deleteMany({ lead: lead._id });
+    await Visit.deleteMany({ lead: lead._id, organizationId: req.tenant.organizationId });
     await normalizeRouteOrders(routeContextFromLead(lead));
     res.json({ message: 'Lead deleted' });
   } catch (err) {

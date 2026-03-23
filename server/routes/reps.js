@@ -9,15 +9,11 @@ function trimString(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function normalizeOrganizationId(value) {
-  const organizationId = trimString(value);
-  return organizationId || null;
-}
-
-async function normalizeRoutesForRep(repId) {
+async function normalizeRoutesForRep(repId, organizationId) {
   const affectedRoutes = await Lead.aggregate([
     {
       $match: {
+        organizationId,
         assignedRepId: new mongoose.Types.ObjectId(repId),
         'routePlan.date': { $ne: null },
       },
@@ -29,12 +25,13 @@ async function normalizeRoutesForRep(repId) {
     },
   ]);
 
-  const repLeads = await Lead.find({ assignedRepId: repId });
+  const repLeads = await Lead.find({ organizationId, assignedRepId: repId });
   const repName = repLeads[0]?.assignedRep || '';
 
   await Promise.all(
     affectedRoutes.map(async ({ _id: routeDate }) => {
       const routeLeads = await Lead.find({
+        organizationId,
         assignedRepId: repId,
         'routePlan.date': routeDate,
       }).sort({ 'routePlan.order': 1, createdAt: 1 });
@@ -58,11 +55,9 @@ async function normalizeRoutesForRep(repId) {
 
 router.get('/', async (req, res) => {
   try {
-    const filter = {};
-    const organizationId = normalizeOrganizationId(req.query.organizationId);
-    if (organizationId) {
-      filter.organizationId = organizationId;
-    }
+    const filter = {
+      organizationId: req.tenant.organizationId,
+    };
     if (req.query.teamId) {
       filter.teamId = req.query.teamId;
     }
@@ -89,17 +84,14 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    let organizationId = normalizeOrganizationId(req.body.organizationId);
+    const organizationId = req.tenant.organizationId;
     let teamId = req.body.teamId || null;
     if (teamId) {
-      const team = await Team.findById(teamId);
+      const team = await Team.findOne({ _id: teamId, organizationId });
       if (!team) {
         return res.status(400).json({ error: 'Selected team was not found' });
       }
       teamId = team._id;
-      if (!organizationId && team.organizationId) {
-        organizationId = team.organizationId;
-      }
     }
 
     const rep = await Rep.create({
@@ -136,11 +128,11 @@ router.post('/', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    const rep = await Rep.findByIdAndDelete(req.params.id);
+    const rep = await Rep.findOneAndDelete({ _id: req.params.id, organizationId: req.tenant.organizationId });
     if (!rep) return res.status(404).json({ error: 'Rep not found' });
 
     await Lead.updateMany(
-      { assignedRepId: rep._id },
+      { assignedRepId: rep._id, organizationId: req.tenant.organizationId },
       {
         $set: {
           assignedRepId: null,
@@ -151,7 +143,7 @@ router.delete('/:id', async (req, res) => {
       }
     );
 
-    await normalizeRoutesForRep(rep._id);
+    await normalizeRoutesForRep(rep._id, req.tenant.organizationId);
     res.json({ message: 'Rep deleted' });
   } catch (err) {
     res.status(400).json({ error: 'Invalid ID' });

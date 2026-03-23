@@ -8,20 +8,9 @@ function trimString(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function normalizeOrganizationId(value) {
-  const organizationId = trimString(value);
-  return organizationId || null;
-}
-
 router.get('/', async (req, res) => {
   try {
-    const filter = {};
-    const organizationId = normalizeOrganizationId(req.query.organizationId);
-    if (organizationId) {
-      filter.organizationId = organizationId;
-    }
-
-    const teams = await Team.find(filter).sort({ name: 1 });
+    const teams = await Team.find({ organizationId: req.tenant.organizationId }).sort({ name: 1 });
     res.json(teams);
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -31,7 +20,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const team = await Team.create({
-      organizationId: normalizeOrganizationId(req.body.organizationId),
+      organizationId: req.tenant.organizationId,
       name: trimString(req.body.name),
       notes: trimString(req.body.notes),
     });
@@ -50,12 +39,15 @@ router.post('/', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    const team = await Team.findByIdAndDelete(req.params.id);
+    const team = await Team.findOneAndDelete({ _id: req.params.id, organizationId: req.tenant.organizationId });
     if (!team) return res.status(404).json({ error: 'Team not found' });
 
-    await Rep.updateMany({ teamId: team._id }, { $set: { teamId: null } });
+    await Rep.updateMany(
+      { teamId: team._id, organizationId: req.tenant.organizationId },
+      { $set: { teamId: null } }
+    );
     await Lead.updateMany(
-      { assignedTeamId: team._id },
+      { assignedTeamId: team._id, organizationId: req.tenant.organizationId },
       {
         $set: {
           assignedTeamId: null,
