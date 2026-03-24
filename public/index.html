@@ -121,6 +121,39 @@
           </div>
           <div id="rep-directory-list" class="directory-list"></div>
         </section>
+
+        <section id="member-invites-panel" class="team-panel-column" aria-labelledby="member-invites-heading">
+          <div class="planner-subheader">
+            <h3 id="member-invites-heading">Member Invites</h3>
+            <p>Invite teammates to this organization with a role-specific access link.</p>
+          </div>
+          <form id="member-invite-form" novalidate>
+            <div class="form-grid compact-grid">
+              <div class="form-group">
+                <label for="invite-email-input">Email</label>
+                <input type="email" id="invite-email-input" placeholder="newmember@example.com" required />
+              </div>
+              <div class="form-group">
+                <label for="invite-role-select">Role</label>
+                <select id="invite-role-select">
+                  <option value="canvasser">Canvasser</option>
+                  <option value="manager">Manager</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+            </div>
+            <p id="member-invite-form-error" class="form-error hidden"></p>
+            <div class="form-actions compact-actions">
+              <button type="submit" class="btn btn-primary">Create Invite</button>
+            </div>
+          </form>
+          <p id="member-invite-feedback" class="map-search-feedback hidden" role="status" aria-live="polite"></p>
+          <div class="planner-subheader">
+            <h3>Pending Invites</h3>
+            <p id="pending-invites-summary">No pending invites.</p>
+          </div>
+          <div id="pending-invites-list" class="directory-list"></div>
+        </section>
       </div>
     </section>
 

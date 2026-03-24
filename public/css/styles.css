@@ -227,6 +227,40 @@ main {
   color: #4b5563;
 }
 
+.invite-feedback-error {
+  color: #b91c1c;
+}
+
+.invite-accept-main {
+  max-width: 720px;
+  margin: 2.5rem auto;
+  padding: 0 1.5rem;
+}
+
+.invite-accept-card {
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.25rem;
+}
+
+.invite-accept-card h1 {
+  margin-bottom: 0.35rem;
+  font-size: 1.35rem;
+}
+
+.invite-accept-card p {
+  color: var(--clr-muted);
+  margin-bottom: 1rem;
+}
+
+.invite-success {
+  color: #065f46;
+  font-size: 0.92rem;
+  margin-top: 0.2rem;
+}
+
 /* ── Planner panel ───────────────────────────────── */
 .planner-panel {
   background: var(--clr-surface);

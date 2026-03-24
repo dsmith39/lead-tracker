@@ -5,6 +5,8 @@ const API = '/api/leads';
 const TEAM_API = '/api/teams';
 const REP_API = '/api/reps';
 const SESSION_API = '/api/session';
+const MEMBERS_API = '/api/members';
+const INVITATIONS_API = '/api/invitations';
 const DEFAULT_MAP_CENTER = [39.8283, -98.5795];
 const DEFAULT_MAP_ZOOM = 4;
 
@@ -30,6 +32,14 @@ const repTeamSelect = document.getElementById('rep-team-select');
 const repFormError = document.getElementById('rep-form-error');
 const repDirectorySummary = document.getElementById('rep-directory-summary');
 const repDirectoryList = document.getElementById('rep-directory-list');
+const memberInvitesPanel = document.getElementById('member-invites-panel');
+const memberInviteForm = document.getElementById('member-invite-form');
+const inviteEmailInput = document.getElementById('invite-email-input');
+const inviteRoleSelect = document.getElementById('invite-role-select');
+const memberInviteFormError = document.getElementById('member-invite-form-error');
+const memberInviteFeedback = document.getElementById('member-invite-feedback');
+const pendingInvitesSummary = document.getElementById('pending-invites-summary');
+const pendingInvitesList = document.getElementById('pending-invites-list');
 
 const plannerTeamSelect = document.getElementById('route-team-select');
 const plannerRepSelect = document.getElementById('route-rep-select');
@@ -104,6 +114,7 @@ let leadDetailsEditable = true;
 let editingRouteSnapshot = { repId: '', date: '', order: null };
 let sessionContext = null;
 let isManagerRole = true; // default true until session resolves
+let pendingInvitesCache = [];
 
 async function apiFetch(url, options = {}) {
   const res = await fetch(url, {
@@ -479,6 +490,53 @@ function renderRosterDirectory() {
   }
 }
 
+function showMemberInviteFeedback(message, isError = false) {
+  memberInviteFeedback.textContent = message;
+  memberInviteFeedback.classList.toggle('hidden', !message);
+  memberInviteFeedback.classList.toggle('invite-feedback-error', isError);
+}
+
+function renderPendingInvites() {
+  if (!pendingInvitesList || !pendingInvitesSummary) {
+    return;
+  }
+
+  pendingInvitesSummary.textContent = pendingInvitesCache.length
+    ? `${pendingInvitesCache.length} pending invite${pendingInvitesCache.length === 1 ? '' : 's'}.`
+    : 'No pending invites.';
+
+  pendingInvitesList.innerHTML = '';
+  if (!pendingInvitesCache.length) {
+    pendingInvitesList.innerHTML = '<p class="planner-empty-state">Create an invite to onboard a teammate.</p>';
+    return;
+  }
+
+  pendingInvitesCache.forEach((invite) => {
+    const card = document.createElement('article');
+    card.className = 'directory-card';
+    card.innerHTML = `
+      <div class="directory-card-title">${escHtml(invite.email)}</div>
+      <div class="directory-card-meta">Role: ${escHtml(invite.role)}</div>
+      <div class="directory-card-meta">Expires: ${escHtml(formatDate(invite.expiresAt))}</div>`;
+    pendingInvitesList.appendChild(card);
+  });
+}
+
+async function loadPendingInvites() {
+  if (!isManagerRole) {
+    pendingInvitesCache = [];
+    renderPendingInvites();
+    return;
+  }
+
+  try {
+    pendingInvitesCache = await apiFetch(`${MEMBERS_API}/invites`);
+    renderPendingInvites();
+  } catch {
+    showMemberInviteFeedback('Failed to load invites.', true);
+  }
+}
+
 function renderStats(leads) {
   const counts = leads.reduce((acc, lead) => {
     acc[lead.status] = (acc[lead.status] || 0) + 1;
@@ -596,6 +654,7 @@ async function loadRosterData() {
   repsCache = reps;
   syncRosterSelectors();
   renderRosterDirectory();
+  await loadPendingInvites();
   renderStats(leadsCache);
   renderRoutePlanner(leadsCache);
 }
@@ -1170,6 +1229,36 @@ repForm.addEventListener('submit', async (event) => {
   }
 });
 
+if (memberInviteForm) {
+  memberInviteForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    hideInlineError(memberInviteFormError);
+    showMemberInviteFeedback('');
+
+    if (!isManagerRole) {
+      showInlineError(memberInviteFormError, 'You do not have permission to invite members.');
+      return;
+    }
+
+    try {
+      const result = await apiFetch(`${MEMBERS_API}/invites`, {
+        method: 'POST',
+        body: JSON.stringify({
+          email: inviteEmailInput.value.trim(),
+          role: inviteRoleSelect.value,
+        }),
+      });
+
+      memberInviteForm.reset();
+      inviteRoleSelect.value = 'canvasser';
+      await loadPendingInvites();
+      showMemberInviteFeedback(`Invite created: ${result.inviteUrl}`);
+    } catch (error) {
+      showInlineError(memberInviteFormError, error.message);
+    }
+  });
+}
+
 function openConfirm(id) {
   pendingDeleteId = id;
   confirmOverlay.classList.remove('hidden');
@@ -1396,9 +1485,24 @@ async function loadSession() {
     if (userEl) userEl.textContent = data.user?.email ?? '';
 
     applyRoleGating(data.role ?? 'canvasser');
+    syncInviteRoleOptions(data.role ?? 'canvasser');
   } catch {
     // Degrade gracefully — session bar stays empty, no restrictions enforced
   }
+}
+
+function syncInviteRoleOptions(role) {
+  if (!inviteRoleSelect) {
+    return;
+  }
+
+  const allowedRoles = role === 'manager'
+    ? ['canvasser', 'manager']
+    : ['canvasser', 'manager', 'admin'];
+
+  inviteRoleSelect.innerHTML = allowedRoles
+    .map((allowedRole) => `<option value="${allowedRole}">${allowedRole.charAt(0).toUpperCase()}${allowedRole.slice(1)}</option>`)
+    .join('');
 }
 
 function applyRoleGating(role) {
@@ -1410,6 +1514,9 @@ function applyRoleGating(role) {
   document.getElementById('btn-enable-lead-edit').classList.toggle('hidden', !isManagerRole);
   document.getElementById('team-form').classList.toggle('hidden', !isManagerRole);
   document.getElementById('rep-form').classList.toggle('hidden', !isManagerRole);
+  if (memberInvitesPanel) {
+    memberInvitesPanel.classList.toggle('hidden', !isManagerRole);
+  }
 }
 
 async function initializeApp() {

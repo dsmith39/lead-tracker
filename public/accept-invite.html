@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Accept Invite | Lead Tracker</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <main class="invite-accept-main">
+    <section class="invite-accept-card" aria-labelledby="invite-accept-heading">
+      <h1 id="invite-accept-heading">Accept Organization Invite</h1>
+      <p>Use your invite link token to activate your membership.</p>
+
+      <form id="accept-invite-form" novalidate>
+        <div class="form-group full-width">
+          <label for="accept-token-input">Invite Token</label>
+          <input type="text" id="accept-token-input" required />
+        </div>
+        <div class="form-group full-width">
+          <label for="accept-display-name-input">Display Name (optional)</label>
+          <input type="text" id="accept-display-name-input" placeholder="Jane Smith" />
+        </div>
+        <p id="accept-invite-error" class="form-error hidden"></p>
+        <p id="accept-invite-success" class="invite-success hidden"></p>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Accept Invite</button>
+          <a href="/" class="btn btn-secondary">Back to App</a>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script src="js/accept-invite.js"></script>
+</body>
+</html>

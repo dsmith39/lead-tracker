@@ -58,6 +58,16 @@ async function createRep(data) {
   return res.json();
 }
 
+async function readSessionForUser(email) {
+  const res = await fetch(`${BASE}/api/session/me`, {
+    headers: {
+      'x-user-email': email,
+      'x-organization-slug': 'default-org',
+    },
+  });
+  return res.json();
+}
+
 // ── Test setup ────────────────────────────────────────────────────────────────
 
 test.beforeEach(async () => {
@@ -213,6 +223,39 @@ test('can create a team and rep from the management panel and assign them on a l
   await expect(page.locator('tbody')).toContainText('Managed Lead');
   await expect(page.locator('tbody')).toContainText('Metro Team');
   await expect(page.locator('tbody')).toContainText('Jordan Smith');
+});
+
+test('manager can create an invite and invited user can accept it', async ({ page }) => {
+  const inviteEmail = `invited-${Date.now()}@example.com`;
+
+  await page.goto('/');
+  await page.fill('#invite-email-input', inviteEmail);
+  await page.selectOption('#invite-role-select', 'manager');
+  await page.click('#member-invite-form button[type="submit"]');
+
+  const feedback = page.locator('#member-invite-feedback');
+  await expect(feedback).toBeVisible();
+  await expect(feedback).toContainText('accept-invite.html?token=');
+
+  const inviteText = await feedback.textContent();
+  const tokenMatch = String(inviteText || '').match(/token=([a-f0-9]+)/i);
+  if (!tokenMatch) {
+    throw new Error(`Invite token not found in feedback text: ${inviteText}`);
+  }
+
+  const inviteToken = tokenMatch[1];
+  await page.goto(`/accept-invite.html?token=${inviteToken}`);
+
+  await page.fill('#accept-display-name-input', 'Invited Manager');
+  await page.click('#accept-invite-form button[type="submit"]');
+
+  await expect(page.locator('#accept-invite-success')).toContainText('Invite accepted');
+  await expect(page.locator('#accept-invite-success')).toContainText(inviteEmail);
+  await expect(page.locator('#accept-invite-success')).toContainText('manager');
+
+  const session = await readSessionForUser(inviteEmail);
+  expect(session.user.email).toBe(inviteEmail);
+  expect(session.role).toBe('manager');
 });
 
 test('clicking the map in browse mode does not open the add modal', async ({ page }) => {

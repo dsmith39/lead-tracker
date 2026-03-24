@@ -46,6 +46,8 @@ app.use('/api/leads', requireTenantContext(), require('./routes/leads'));
 app.use('/api/geocode', require('./routes/geocode'));
 app.use('/api/teams', requireTenantContext({ minRole: 'manager' }), require('./routes/teams'));
 app.use('/api/reps', requireTenantContext({ minRole: 'manager' }), require('./routes/reps'));
+app.use('/api/members', requireTenantContext({ minRole: 'manager' }), require('./routes/members'));
+app.use('/api/invitations', require('./routes/invitations'));
 
 // Serve frontend
 app.get('*', (req, res) => {
